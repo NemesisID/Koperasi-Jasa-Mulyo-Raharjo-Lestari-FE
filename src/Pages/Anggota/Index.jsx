@@ -6,6 +6,9 @@ import {
     TrendingDown, TrendingUp, UserRound, WalletCards
 } from 'lucide-react';
 import { MemberShell } from '@/Components/Koperasi/MemberShell';
+import PriceBoardPage from './PriceBoard';
+import ReceiptsPage from './Receipts';
+import WalletAndShuPage from './WalletAndShu';
 import {
     DataPanel, DownloadButton, EyeAction, FilterButton,
     MetricCard, PageTitle, Status, Trend
@@ -429,6 +432,12 @@ function MemberPages({ page, setPage, openForm }) {
     switch (page) {
         case 'dashboard':
             return <DashboardPage />;
+        case 'harga-sampah':
+            return <PriceBoardPage />;
+        case 'riwayat-setor':
+            return <ReceiptsPage />;
+        case 'dompet':
+            return <WalletAndShuPage />;
         case 'simpanan-pokok':
             return <PokokPage />;
         case 'simpanan-wajib':
@@ -450,6 +459,9 @@ function MemberPages({ page, setPage, openForm }) {
 
 const memberPageTitles = {
     'dashboard': 'Dashboard Anggota',
+    'harga-sampah': 'Papan Harga Sampah',
+    'riwayat-setor': 'Riwayat Setor & Nota Digital',
+    'dompet': 'Dompet & SHU',
     'simpanan-pokok': 'Simpanan Pokok Anggota',
     'simpanan-wajib': 'Simpanan Wajib Anggota',
     'simpanan-sukarela': 'Simpanan Sukarela Anggota',

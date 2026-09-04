@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-    ArrowDownToLine, Check, Eye, EyeOff, Leaf, LogOut,
+    ArrowDownToLine, Check, Eye, EyeOff, Landmark, Leaf, LogOut,
     Plus, Save, TrendingDown,
     TrendingUp, UserPlus, WalletCards, X
 } from 'lucide-react';
@@ -8,7 +8,7 @@ import {
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
 // ─── Native modal overlay with animation ──────────────────────
-function Modal({ open, onClose, children }) {
+export function Modal({ open, onClose, children }) {
     if (!open) return null;
     return (
         <div
@@ -146,13 +146,94 @@ const configs = {
         submitCls: 'bg-primary hover:bg-primary/90 text-white',
         bg: 'bg-accent/60 border-b border-border/60',
     },
+    shuSimulation: {
+        title: 'Simulasi & Finalisasi SHU',
+        icon: Landmark,
+        tone: 'text-primary',
+        submit: 'Finalisasi & Bagikan Saldo',
+        submitCls: 'bg-emerald-700 hover:bg-emerald-800 text-white',
+        bg: 'bg-accent/60 border-b border-border/60',
+        success: 'SHU Berhasil Difinalisasi',
+    },
 };
+
+// ─── SHU simulation draft (FE-5.1) ────────────────────────────
+// ponytail: mock draft alokasi sampai endpoint /shu/simulate tersedia.
+const SHU_DRAFT = {
+    netProfit: 'Rp 726.000.000',
+    shuPool: 'Rp 145.200.000',
+    recipients: '450 Anggota',
+    rows: [
+        ['HS', 'Hadi Suwarno', 'Rp 620.000', 'Rp 830.000', 'Rp 1.450.000'],
+        ['SM', 'Siti Maryam', 'Rp 380.000', 'Rp 510.000', 'Rp 890.000'],
+        ['AN', 'Agus Nurhadi', 'Rp 820.000', 'Rp 1.100.000', 'Rp 1.920.000'],
+        ['RP', 'Ratna Permata', 'Rp 240.000', 'Rp 320.000', 'Rp 560.000'],
+    ],
+};
+
+function ShuDraftTable() {
+    const d = SHU_DRAFT;
+    return (
+        <>
+            <div className="grid grid-cols-3 gap-2.5">
+                {[
+                    ['Laba Bersih Tahun Buku', d.netProfit],
+                    ['Alokasi SHU (20%)', d.shuPool],
+                    ['Jumlah Penerima', d.recipients],
+                ].map(([label, value]) => (
+                    <div key={label} className="rounded-xl border border-border/60 bg-slate-50/70 p-3 text-center">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+                        <strong className="mt-0.5 block text-xs font-extrabold text-primary">{value}</strong>
+                    </div>
+                ))}
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-border/60">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                        <thead className="bg-[#eef3fc] text-[10px] font-bold uppercase tracking-wider text-slate-700">
+                            <tr>
+                                <th className="px-3.5 py-2.5">Anggota</th>
+                                <th className="px-3.5 py-2.5">Jasa Modal</th>
+                                <th className="px-3.5 py-2.5">Jasa Usaha</th>
+                                <th className="px-3.5 py-2.5 text-right">Total SHU</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/60 bg-card">
+                            {d.rows.map(([initial, name, modal, usaha, total]) => (
+                                <tr key={name} className="hover:bg-secondary/40 transition-colors">
+                                    <td className="px-3.5 py-2.5">
+                                        <div className="flex items-center gap-2.5">
+                                            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-primary">
+                                                {initial}
+                                            </span>
+                                            <span className="font-semibold text-foreground">{name}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-3.5 py-2.5 text-muted-foreground">{modal}</td>
+                                    <td className="px-3.5 py-2.5 text-muted-foreground">{usaha}</td>
+                                    <td className="px-3.5 py-2.5 text-right font-bold text-primary">{total}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Draft dihitung dari 20% laba bersih tahun buku, dibagi proporsional
+                berdasarkan porsi simpanan (jasa modal) dan partisipasi transaksi usaha (jasa usaha).
+                Finalisasi akan membagikan saldo SHU ke dompet setiap anggota.
+            </p>
+        </>
+    );
+}
 
 export function FormPopup({ kind, onClose, onSuccess }) {
     const [error, setError] = useState('');
     const [showPw, setShowPw] = useState(false);
     if (!kind || !configs[kind]) return null;
-    const { title, icon: Icon, tone, submit, submitCls, bg } = configs[kind];
+    const { title, icon: Icon, tone, submit, submitCls, bg, success = 'Data Berhasil Disimpan' } = configs[kind];
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -163,7 +244,7 @@ export function FormPopup({ kind, onClose, onSuccess }) {
         }
         setError('');
         onClose();
-        onSuccess('Data Berhasil Disimpan');
+        onSuccess(success);
     };
 
     return (
@@ -266,6 +347,8 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                         <Field name="recipientCount" label="Jumlah Penerima" defaultValue="450 Anggota" />
                     </>
                 )}
+
+                {kind === 'shuSimulation' && <ShuDraftTable />}
 
                 {error && <p className="text-xs font-medium text-destructive">{error}</p>}
 

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { router } from '@/lib/shims';
+import { useAuth } from '@/lib/auth';
 import {
     Bell, ChevronDown, CircleHelp, FileBarChart,
-    LayoutGrid, LogOut, Menu, Settings,
-    TrendingDown, TrendingUp, UserRound, WalletCards, X,
+    LayoutGrid, LogOut, Menu, MessageSquareWarning, Settings,
+    Tag, TrendingDown, TrendingUp, UserRound, WalletCards, X,
 } from 'lucide-react';
 import { ConfirmPopup } from './Popups';
 
@@ -13,6 +14,8 @@ export function ManagerShell({ children, currentPage, setPage }) {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [logoutOpen, setLogoutOpen] = useState(false);
     const [savingsOpen, setSavingsOpen] = useState(currentPage?.startsWith('simpanan'));
+    const { user, logout } = useAuth();
+    const displayName = user?.name || '(Nama)';
 
     const close = () => setMobileOpen(false);
     const nav = (page) => { setPage(page); close(); };
@@ -54,6 +57,18 @@ export function ManagerShell({ children, currentPage, setPage }) {
                 <button onClick={() => nav('dashboard')} className={navBtnCls(is('dashboard'))}>
                     <LayoutGrid size={18} />
                     <span>Dashboard</span>
+                </button>
+
+                {/* Manajemen Anggota */}
+                <button onClick={() => nav('anggota')} className={navBtnCls(is('anggota'))}>
+                    <UserRound size={18} />
+                    <span>Manajemen Anggota</span>
+                </button>
+
+                {/* Harga Sampah */}
+                <button onClick={() => nav('harga-sampah')} className={navBtnCls(is('harga-sampah'))}>
+                    <Tag size={18} />
+                    <span>Harga Sampah</span>
                 </button>
 
                 {/* Simpanan (Dropdown) */}
@@ -106,6 +121,12 @@ export function ManagerShell({ children, currentPage, setPage }) {
                 <button onClick={() => nav('pengeluaran')} className={navBtnCls(is('pengeluaran'))}>
                     <TrendingDown size={18} />
                     <span>Pengeluaran</span>
+                </button>
+
+                {/* Pengaduan */}
+                <button onClick={() => nav('pengaduan')} className={navBtnCls(is('pengaduan'))}>
+                    <MessageSquareWarning size={18} />
+                    <span>Pengaduan</span>
                 </button>
 
                 {/* Laporan */}
@@ -164,7 +185,7 @@ export function ManagerShell({ children, currentPage, setPage }) {
                     </button>
                     <div>
                         <h1 className="text-base font-bold text-foreground md:text-lg">
-                            Selamat Datang, <span className="text-primary font-semibold">(Nama)</span>
+                            Selamat Datang, <span className="text-primary font-semibold">{displayName}</span>
                         </h1>
                         <p className="text-xs text-muted-foreground">Koperasi Jasa Mulyo Raharjo Lestari</p>
                     </div>
@@ -179,7 +200,7 @@ export function ManagerShell({ children, currentPage, setPage }) {
                     </button>
                     <div className="flex items-center gap-2.5 rounded-full bg-[#e8efff] py-1.5 pl-4 pr-1.5 text-primary">
                         <div className="text-right leading-none">
-                            <p className="text-xs font-semibold text-foreground">(Nama)</p>
+                            <p className="text-xs font-semibold text-foreground">{displayName}</p>
                             <span className="inline-block mt-0.5 rounded-full bg-primary px-2 py-0.5 text-[9px] font-bold tracking-widest text-white">
                                 PENGURUS
                             </span>
@@ -205,7 +226,7 @@ export function ManagerShell({ children, currentPage, setPage }) {
                 tone="destructive"
                 icon="logout"
                 onCancel={() => setLogoutOpen(false)}
-                onConfirm={() => router.visit('/')}
+                onConfirm={async () => { await logout(); router.visit('/'); }}
             />
         </div>
     );

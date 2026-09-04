@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { OfficerShell } from '@/Components/Koperasi/OfficerShell';
 import { StatusPopup } from '@/Components/Koperasi/Popups';
+import WeighingFormPage from './WeighingForm';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
@@ -293,6 +294,7 @@ function ReportPage() {
 
 // ─── Router Component ─────────────────────────────────────────
 function OfficerPages({ page, showStatus }) {
+    if (page === 'timbang') return <WeighingFormPage />;
     if (page === 'jemput-sampah') return <PickupPage showStatus={showStatus} />;
     if (page === 'laporan') return <ReportPage />;
     return <DashboardPage />;
@@ -300,6 +302,7 @@ function OfficerPages({ page, showStatus }) {
 
 const officerPageTitles = {
     'dashboard': 'Dashboard Petugas',
+    'timbang': 'Timbang Sampah',
     'jemput-sampah': 'Jemput Sampah',
     'laporan': 'Laporan Harian Petugas',
 };

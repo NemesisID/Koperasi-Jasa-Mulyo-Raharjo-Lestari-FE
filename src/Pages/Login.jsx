@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Head, router } from '@/lib/shims';
+import { useAuth } from '@/lib/auth';
 import { ArrowLeft, Building2, Eye, EyeOff, Leaf, LockKeyhole, LogIn, ShieldCheck, UserRound } from 'lucide-react';
 
 const roles = ['Pengurus', 'Anggota', 'Petugas Sampah'];
@@ -18,15 +19,23 @@ function LoginCard() {
     const [role, setRole] = useState('Anggota');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+    const { login } = useAuth();
 
-    function handleSubmit(e) {
+    async function handleSubmit(e) {
         e.preventDefault();
         const data = new FormData(e.currentTarget);
         if (!data.get('identity') || !data.get('password')) { setError('Username dan password wajib diisi.'); return; }
         setError('');
-        if (role === 'Anggota') router.visit('/anggota');
-        else if (role === 'Petugas Sampah') router.visit('/petugas');
-        else router.visit('/pengurus');
+        setLoading(true);
+        try {
+            // Coba API backend; bila belum tersedia, login() jatuh ke mode demo per role.
+            const home = await login({ identity: data.get('identity'), password: data.get('password'), role });
+            router.visit(home);
+        } catch (err) {
+            setError(err.message || 'Login gagal. Periksa kembali kredensial Anda.');
+            setLoading(false);
+        }
     }
 
     return (
@@ -89,9 +98,9 @@ function LoginCard() {
 
                 {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
-                <button type="submit"
-                    className="flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-base font-semibold text-white shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5">
-                    Masuk <LogIn size={18} />
+                <button type="submit" disabled={loading}
+                    className="flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-base font-semibold text-white shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0">
+                    {loading ? 'Memproses...' : <>Masuk <LogIn size={18} /></>}
                 </button>
             </form>
 
