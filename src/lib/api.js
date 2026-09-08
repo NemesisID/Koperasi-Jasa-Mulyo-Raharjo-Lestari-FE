@@ -13,12 +13,13 @@ export async function api(path, { method = 'GET', body, headers } = {}) {
     const reqHeaders = { Accept: 'application/json', ...headers };
     const token = getToken();
     if (token) reqHeaders['Authorization'] = `Bearer ${token}`;
-    if (body !== undefined) reqHeaders['Content-Type'] = 'application/json';
+    const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+    if (body !== undefined && !isForm) reqHeaders['Content-Type'] = 'application/json';
 
     const res = await fetch(`${BASE}/api/v1${path}`, {
         method,
         headers: reqHeaders,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        body: body !== undefined ? (isForm ? body : JSON.stringify(body)) : undefined,
     });
 
     if (res.ok) return res.status === 204 ? null : res.json().catch(() => null);

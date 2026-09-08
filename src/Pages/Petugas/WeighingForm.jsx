@@ -7,80 +7,154 @@ import {
 } from 'lucide-react';
 import ReceiptSuccessModal from '@/Components/Koperasi/ReceiptSuccessModal';
 import { calcWeighing } from '@/lib/weighing';
+import { api, useApi, rp } from '@/lib/api';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
-const rp = (n) => 'Rp ' + n.toLocaleString('id-ID');
-
-// ponytail: mock sampai endpoint /api/v1/members & /trash-categories tersedia.
-const MEMBERS = [
-    { code: 'MBR-202608-0042', name: 'Bambang Susanto — Jl. Merdeka No. 45' },
-    { code: 'MBR-202608-0043', name: 'Siti Aminah — Jl. Kenanga Asri B4' },
-    { code: 'MBR-202608-0044', name: 'Ahmad Hidayat — Gang Kelinci No. 8' },
-    { code: 'MBR-202607-0040', name: 'Suryono — Jl. Merdeka No. 45' },
-    { code: 'MBR-202606-0031', name: 'Lilik Suradi — Griya Hijau B2' },
-];
-
-// Katalog: harga gudang & harga jemput (logam −Rp2.000, non-logam −Rp300).
-const CATALOG = [
-    { name: 'Botol PET Bening', unit: 'kg', warehouse: 3500, pickup: 3200 },
-    { name: 'Plastik Kresek', unit: 'kg', warehouse: 1500, pickup: 1200 },
-    { name: 'Kardus / Karton', unit: 'kg', warehouse: 2000, pickup: 1700 },
-    { name: 'Kaleng Aluminium', unit: 'kg', warehouse: 12000, pickup: 10000 },
-    { name: 'Besi Tua', unit: 'kg', warehouse: 4500, pickup: 2500 },
-    { name: 'Tutup Galon Aqua', unit: 'biji', warehouse: 300, pickup: 0 },
-];
-
-let receiptSeq = 92;
-const newReceiptId = () =>
-    `NTR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(++receiptSeq).padStart(4, '0')}`;
-
-const emptyRow = () => ({ trash: CATALOG[0].name, weight: '' });
-
 export default function WeighingFormPage() {
-    const [member, setMember] = useState('');
-    const [location, setLocation] = useState('gudang'); // 'gudang' | 'jemput'
-    const [rows, setRows] = useState([emptyRow()]);
-    const [receipt, setReceipt] = useState(null);
+    const { data: membersData, loading: loadingMembers } = useApi('/members?status=aktif&per_page=200');
+    const { data: categoriesData, loading: loadingCats } = useApi('/trash-categories');
 
-    const priceOf = (name) => {
-        const item = CATALOG.find(c => c.name === name);
-        return location === 'gudang' ? item.warehouse : item.pickup;
+    const members = membersData ?? [];
+    const categories = (categoriesData ?? []).filter(c => c.is_active !== false);
+
+    const [memberSearch, setMemberSearch] = useState('');
+    const [selectedMemberId, setSelectedMemberId] = useState('');
+    const [location, setLocation] = useState('gudang'); // 'gudang' | 'jemput_rumah'
+    const [isSorted, setIsSorted] = useState(true); // true = bersih/terpilah, false = kotor
+    const [rows, setRows] = useState([{ categoryId: '', quantity: '' }]);
+    const [receipt, setReceipt] = useState(null);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState('');
+
+    // Default category when loaded
+    const defaultCatId = categories[0]?.id ? String(categories[0].id) : '';
+
+    const getPriceOf = (catId) => {
+        const cat = categories.find(c => String(c.id) === String(catId));
+        if (!cat) return 0;
+        const base = isSorted ? Number(cat.price_sorted || 0) : Number(cat.price_unsorted || 0);
+        if (location === 'jemput_rumah') {
+            const deduction = cat.type === 'logam' ? 2000 : 300;
+            return Math.max(0, base - deduction);
+        }
+        return base;
     };
 
     // Kalkulator preview real-time (FE-3.3)
-    const { gross, fee, net } = useMemo(
-        () => calcWeighing(rows.map(r => ({ weight: r.weight, price: priceOf(r.trash) }))),
-        [rows, location],
-    );
+    const { gross, fee, net } = useMemo(() => {
+        return calcWeighing(
+            rows.map(r => ({
+                weight: r.quantity,
+                price: getPriceOf(r.categoryId || defaultCatId),
+            }))
+        );
+    }, [rows, location, isSorted, categories, defaultCatId]);
 
     const setRow = (i, patch) =>
         setRows(prev => prev.map((r, j) => j === i ? { ...r, ...patch } : r));
 
-    const submit = (e) => {
-        e.preventDefault();
-        const items = rows
-            .filter(r => Number(r.weight) > 0)
-            .map(r => {
-                const cat = CATALOG.find(c => c.name === r.trash);
-                const weight = Number(r.weight);
-                return { name: r.trash, unit: cat.unit, weight, price: priceOf(r.trash), total: weight * priceOf(r.trash) };
-            });
-        if (!member.trim() || items.length === 0) return;
+    const addRow = () => {
+        setRows(prev => [...prev, { categoryId: defaultCatId, quantity: '' }]);
+    };
 
-        setReceipt({
-            id: newReceiptId(),
-            member: member.trim(),
-            date: new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' }),
-            location: location === 'gudang' ? 'Diantar ke Gudang' : 'Dijemput di Rumah/Pasar',
-            items,
-            gross,
-            fee,
-            net,
-        });
-        // Reset form untuk penimbangan berikutnya
-        setMember('');
-        setRows([emptyRow()]);
+    // Filtered members for dropdown/datalist
+    const matchedMember = members.find(m =>
+        String(m.id) === String(selectedMemberId) ||
+        m.name.toLowerCase() === memberSearch.trim().toLowerCase() ||
+        m.member_code.toLowerCase() === memberSearch.trim().toLowerCase()
+    );
+
+    const submit = async (e) => {
+        e.preventDefault();
+        setError('');
+
+        const targetMember = matchedMember || members.find(m =>
+            m.name.toLowerCase().includes(memberSearch.trim().toLowerCase()) ||
+            m.member_code.toLowerCase().includes(memberSearch.trim().toLowerCase())
+        );
+
+        if (!targetMember) {
+            setError('Pilih anggota koperasi yang valid dari daftar.');
+            return;
+        }
+
+        const validRows = rows
+            .map(r => ({
+                categoryId: r.categoryId || defaultCatId,
+                qty: Number(r.quantity),
+            }))
+            .filter(r => r.categoryId && r.qty > 0);
+
+        if (validRows.length === 0) {
+            setError('Mohon isi minimal satu baris sampah dengan kuantitas lebih dari 0.');
+            return;
+        }
+
+        setSubmitting(true);
+
+        try {
+            // Step 1: Create pickup ticket
+            const ticketRes = await api('/pickups', {
+                method: 'POST',
+                body: {
+                    member_id: targetMember.id,
+                    location_type: location,
+                    is_sorted: isSorted,
+                },
+            });
+
+            const pickup = ticketRes.data;
+            const pickupId = pickup.id;
+
+            // Step 2: Submit weigh items
+            const payloadItems = validRows.map(r => {
+                const cat = categories.find(c => String(c.id) === String(r.categoryId));
+                const isKg = (cat?.unit || 'kg').toLowerCase() === 'kg';
+                return {
+                    category_id: Number(r.categoryId),
+                    weight_kg: isKg ? r.qty : null,
+                    unit_count: !isKg ? parseInt(r.qty, 10) : null,
+                };
+            });
+
+            const weighRes = await api(`/pickups/${pickupId}/weigh-items`, {
+                method: 'POST',
+                body: { items: payloadItems },
+            });
+
+            const receiptItems = validRows.map(r => {
+                const cat = categories.find(c => String(c.id) === String(r.categoryId));
+                const price = getPriceOf(r.categoryId);
+                return {
+                    name: cat?.name || 'Sampah',
+                    unit: cat?.unit || 'kg',
+                    weight: r.qty,
+                    price,
+                    total: r.qty * price,
+                };
+            });
+
+            setReceipt({
+                id: weighRes.data?.receipt_number || `NOTA-${String(pickupId).padStart(5, '0')}`,
+                member: `${targetMember.name} (${targetMember.member_code})`,
+                date: new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' }),
+                location: location === 'gudang' ? 'Diantar ke Gudang' : 'Dijemput di Rumah/Pasar',
+                items: receiptItems,
+                gross,
+                fee,
+                net: weighRes.data?.net_earned ?? net,
+            });
+
+            // Reset form
+            setMemberSearch('');
+            setSelectedMemberId('');
+            setRows([{ categoryId: defaultCatId, quantity: '' }]);
+        } catch (err) {
+            setError(err.message || 'Gagal menyimpan penimbangan sampah.');
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     const inputCls = 'h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all placeholder:text-muted-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15';
@@ -90,7 +164,7 @@ export default function WeighingFormPage() {
             {/* Header */}
             <div>
                 <h1 className="text-2xl font-bold text-foreground md:text-3xl">Timbang Sampah</h1>
-                <p className="mt-1 text-sm text-muted-foreground">Input penimbangan setoran anggota — saldo masuk otomatis setelah disimpan.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Input penimbangan setoran anggota — saldo masuk otomatis ke dompet anggota setelah disimpan.</p>
             </div>
 
             <form onSubmit={submit} className="flex flex-col gap-5">
@@ -106,53 +180,98 @@ export default function WeighingFormPage() {
                             <input
                                 id="member"
                                 list="member-list"
-                                value={member}
-                                onChange={e => setMember(e.target.value)}
-                                placeholder="Ketik nama atau kode anggota..."
+                                value={memberSearch}
+                                onChange={e => {
+                                    setMemberSearch(e.target.value);
+                                    const match = members.find(m => `${m.member_code} - ${m.name}` === e.target.value || m.name === e.target.value);
+                                    if (match) setSelectedMemberId(match.id);
+                                }}
+                                placeholder={loadingMembers ? 'Memuat data anggota…' : 'Ketik nama atau kode anggota...'}
                                 autoComplete="off"
+                                required
                                 className={inputCls}
                             />
                             <datalist id="member-list">
-                                {MEMBERS.map(m => <option key={m.code} value={m.name} />)}
+                                {members.map(m => (
+                                    <option key={m.id} value={`${m.member_code} - ${m.name} (${m.address || 'Alamat -'})`} />
+                                ))}
                             </datalist>
+                            {matchedMember && (
+                                <p className="text-xs font-semibold text-emerald-700">
+                                    Anggota terverifikasi: {matchedMember.name} · {matchedMember.phone || '-'}
+                                </p>
+                            )}
                         </div>
 
-                        {/* Toggle lokasi */}
-                        <div className="flex flex-col gap-1.5">
-                            <span className="text-xs font-semibold text-foreground/80">Lokasi Penimbangan</span>
-                            <div className="grid grid-cols-2 gap-3">
-                                <button
-                                    type="button"
-                                    role="radio"
-                                    aria-checked={location === 'gudang'}
-                                    onClick={() => setLocation('gudang')}
-                                    className={cn(
-                                        'flex items-center justify-center gap-2 rounded-xl border h-11 text-xs font-semibold transition-all',
-                                        location === 'gudang'
-                                            ? 'border-primary bg-primary text-white shadow-sm'
-                                            : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-primary'
-                                    )}
-                                >
-                                    <Warehouse size={16} /> Diantar ke Gudang
-                                </button>
-                                <button
-                                    type="button"
-                                    role="radio"
-                                    aria-checked={location === 'jemput'}
-                                    onClick={() => setLocation('jemput')}
-                                    className={cn(
-                                        'flex items-center justify-center gap-2 rounded-xl border h-11 text-xs font-semibold transition-all',
-                                        location === 'jemput'
-                                            ? 'border-primary bg-primary text-white shadow-sm'
-                                            : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-primary'
-                                    )}
-                                >
-                                    <Home size={16} /> Dijemput di Rumah/Pasar
-                                </button>
+                        {/* Toggle lokasi & kebersihan */}
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-xs font-semibold text-foreground/80">Lokasi Penimbangan</span>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={location === 'gudang'}
+                                        onClick={() => setLocation('gudang')}
+                                        className={cn(
+                                            'flex items-center justify-center gap-2 rounded-xl border h-11 text-xs font-semibold transition-all',
+                                            location === 'gudang'
+                                                ? 'border-primary bg-primary text-white shadow-sm'
+                                                : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-primary'
+                                        )}
+                                    >
+                                        <Warehouse size={16} /> Diantar Gudang
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={location === 'jemput_rumah'}
+                                        onClick={() => setLocation('jemput_rumah')}
+                                        className={cn(
+                                            'flex items-center justify-center gap-2 rounded-xl border h-11 text-xs font-semibold transition-all',
+                                            location === 'jemput_rumah'
+                                                ? 'border-primary bg-primary text-white shadow-sm'
+                                                : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-primary'
+                                        )}
+                                    >
+                                        <Home size={16} /> Jemput Rumah
+                                    </button>
+                                </div>
                             </div>
-                            <p className="text-[11px] text-muted-foreground">
-                                Harga jemput lebih rendah: logam −Rp2.000/kg, non-logam −Rp300/kg dari harga gudang.
-                            </p>
+
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-xs font-semibold text-foreground/80">Kondisi Sampah</span>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={isSorted}
+                                        onClick={() => setIsSorted(true)}
+                                        className={cn(
+                                            'flex items-center justify-center gap-2 rounded-xl border h-11 text-xs font-semibold transition-all',
+                                            isSorted
+                                                ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
+                                                : 'border-border bg-card text-muted-foreground hover:border-emerald-400 hover:text-emerald-700'
+                                        )}
+                                    >
+                                        Bersih / Terpilah
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={!isSorted}
+                                        onClick={() => setIsSorted(false)}
+                                        className={cn(
+                                            'flex items-center justify-center gap-2 rounded-xl border h-11 text-xs font-semibold transition-all',
+                                            !isSorted
+                                                ? 'border-amber-600 bg-amber-600 text-white shadow-sm'
+                                                : 'border-border bg-card text-muted-foreground hover:border-amber-400 hover:text-amber-700'
+                                        )}
+                                    >
+                                        Campur / Belum
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -165,7 +284,7 @@ export default function WeighingFormPage() {
                         </h2>
                         <button
                             type="button"
-                            onClick={() => setRows(prev => [...prev, emptyRow()])}
+                            onClick={addRow}
                             className="flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-xs font-semibold text-white shadow-xs hover:bg-primary/90 transition-all"
                         >
                             <Plus size={14} /> Tambah
@@ -173,34 +292,44 @@ export default function WeighingFormPage() {
                     </div>
 
                     <div className="mt-4 flex flex-col gap-3">
-                        {rows.map((row, i) => {
-                            const cat = CATALOG.find(c => c.name === row.trash);
+                        {loadingCats && (
+                            <p className="py-4 text-center text-sm text-muted-foreground">Memuat daftar kategori sampah…</p>
+                        )}
+                        {!loadingCats && rows.map((row, i) => {
+                            const activeCatId = row.categoryId || defaultCatId;
+                            const cat = categories.find(c => String(c.id) === String(activeCatId)) || categories[0];
+                            const unitPrice = getPriceOf(activeCatId);
+
                             return (
-                                <div key={i} className="grid grid-cols-[1fr_120px_44px] items-center gap-3">
+                                <div key={i} className="grid grid-cols-[1fr_130px_44px] items-center gap-3">
                                     <div className="flex flex-col gap-1">
                                         <select
-                                            value={row.trash}
-                                            onChange={e => setRow(i, { trash: e.target.value })}
+                                            value={row.categoryId || defaultCatId}
+                                            onChange={e => setRow(i, { categoryId: e.target.value })}
                                             aria-label={`Jenis sampah ${i + 1}`}
                                             className={cn(inputCls, 'appearance-none')}
                                         >
-                                            {CATALOG.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                                            {categories.map(c => (
+                                                <option key={c.id} value={c.id}>{c.name} ({c.unit})</option>
+                                            ))}
                                         </select>
                                         <span className="text-[11px] font-semibold text-emerald-700">
-                                            {rp(location === 'gudang' ? cat.warehouse : cat.pickup)} / {cat.unit}
+                                            Tarif: {rp(unitPrice)} / {cat?.unit || 'kg'}
                                         </span>
                                     </div>
-                                    <input
-                                        type="number"
-                                        inputMode="decimal"
-                                        min="0"
-                                        step="0.1"
-                                        value={row.weight}
-                                        onChange={e => setRow(i, { weight: e.target.value })}
-                                        placeholder="0.0"
-                                        aria-label={`Berat ${i + 1} (${cat.unit})`}
-                                        className={cn(inputCls, 'text-center text-lg font-bold')}
-                                    />
+                                    <div className="flex flex-col gap-1">
+                                        <input
+                                            type="number"
+                                            inputMode="decimal"
+                                            min="0"
+                                            step={cat?.unit === 'kg' ? '0.01' : '1'}
+                                            value={row.quantity}
+                                            onChange={e => setRow(i, { quantity: e.target.value })}
+                                            placeholder={cat?.unit === 'kg' ? '0.00 kg' : '0 buah'}
+                                            aria-label={`Berat/Kuantitas ${i + 1}`}
+                                            className={cn(inputCls, 'text-center text-base font-bold')}
+                                        />
+                                    </div>
                                     <button
                                         type="button"
                                         onClick={() => setRows(prev => prev.length > 1 ? prev.filter((_, j) => j !== i) : prev)}
@@ -236,14 +365,20 @@ export default function WeighingFormPage() {
                                 <strong className="text-2xl font-extrabold text-emerald-300 md:text-3xl">{rp(net)}</strong>
                             </div>
                         </div>
+
+                        {error && (
+                            <div className="rounded-xl bg-rose-500/20 border border-rose-300/40 p-3 text-xs text-rose-100 font-medium">
+                                {error}
+                            </div>
+                        )}
                     </div>
                     <button
                         type="submit"
-                        disabled={!member.trim() || gross <= 0}
+                        disabled={submitting || !memberSearch.trim() || gross <= 0}
                         className="flex h-12 w-full items-center justify-center gap-2 bg-white text-sm font-bold text-[#0b489a] transition-all hover:bg-blue-50 disabled:opacity-50"
                     >
                         <CheckCircle2 size={18} />
-                        <span>Simpan Timbangan & Terbitkan Nota</span>
+                        <span>{submitting ? 'Menyimpan ke Sistem…' : 'Simpan Timbangan & Terbitkan Nota'}</span>
                     </button>
                 </section>
             </form>

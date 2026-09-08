@@ -8,6 +8,7 @@ import {
 import { OfficerShell } from '@/Components/Koperasi/OfficerShell';
 import { StatusPopup } from '@/Components/Koperasi/Popups';
 import { useApi, rp, dfmt } from '@/lib/api';
+import WeighingFormPage from './WeighingForm';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
@@ -286,6 +287,7 @@ function ReportPage({ showStatus }) {
 
 // ─── Router Component ─────────────────────────────────────────
 function OfficerPages({ page, showStatus }) {
+    if (page === 'timbang-sampah') return <WeighingFormPage />;
     if (page === 'jemput-sampah') return <PickupPage />;
     if (page === 'laporan') return <ReportPage showStatus={showStatus} />;
     return <DashboardPage />;
@@ -293,6 +295,7 @@ function OfficerPages({ page, showStatus }) {
 
 const officerPageTitles = {
     'dashboard': 'Dashboard Petugas',
+    'timbang-sampah': 'Timbang Sampah',
     'jemput-sampah': 'Jemput Sampah',
     'laporan': 'Laporan Penjemputan',
 };

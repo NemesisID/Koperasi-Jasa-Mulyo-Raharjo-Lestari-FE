@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth, logout } from '@/lib/auth';
 import {
     Bell, ChevronDown, CircleHelp, FileBarChart, Leaf,
-    LayoutGrid, LogOut, Menu, Settings,
+    LayoutGrid, LogOut, Menu, MessageSquareWarning, Settings,
     TrendingDown, TrendingUp, UserRound, WalletCards, X,
 } from 'lucide-react';
 import { ConfirmPopup } from './Popups';

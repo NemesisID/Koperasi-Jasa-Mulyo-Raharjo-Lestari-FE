@@ -6,51 +6,53 @@ import {
 } from 'lucide-react';
 import { PageHeader, StatCard } from '@/Components/Koperasi/ManagerUI';
 import { Modal } from '@/Components/Koperasi/Popups';
-import { usePopup } from './Index';
+import { api, useApi, rp, dfmt } from '@/lib/api';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
-
-// ponytail: mock komplain sampai endpoint /api/v1/complaints tersedia.
-const INITIAL_COMPLAINTS = [
-    {
-        id: 'KMP-2026-0118', member: 'Siti Aminah', code: 'MBR-202608-0043', receipt: 'NTR-20260903-0091',
-        reason: 'Berat salah', claimed: '12.5 kg', recorded: '10.2 kg', diffValue: 'Rp 11.500',
-        note: 'Sampah ditimbang dua kali, timbangan kedua menunjukkan 12.5 kg.',
-        date: '03 Sep 2026, 14:20 WIB', status: 'menunggu',
-    },
-    {
-        id: 'KMP-2026-0117', member: 'Ahmad Hidayat', code: 'MBR-202608-0044', receipt: 'NTR-20260903-0087',
-        reason: 'Kategori salah', claimed: 'Botol PET Bening (Rp 3.500)', recorded: 'Plastik Campur (Rp 1.500)', diffValue: 'Rp 24.000',
-        note: 'Sudah dipilah bening semua, tidak campur.',
-        date: '03 Sep 2026, 11:05 WIB', status: 'menunggu',
-    },
-    {
-        id: 'KMP-2026-0115', member: 'Bambang Susanto', code: 'MBR-202608-0042', receipt: 'NTR-20260902-0076',
-        reason: 'Berat salah', claimed: '8.0 kg', recorded: '7.6 kg', diffValue: 'Rp 1.400',
-        note: 'Selisih kecil, mungkin pembulatan.',
-        date: '02 Sep 2026, 16:40 WIB', status: 'selesai',
-    },
-];
 
 // ─── Dialog aksi: setujui revisi saldo atau tolak dengan alasan ──
 function ActionModal({ complaint, onClose, onDone }) {
     const [mode, setMode] = useState(null); // 'approve' | 'reject' | null
     const [reason, setReason] = useState('');
+    const [adjustment, setAdjustment] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
+
     if (!complaint) return null;
 
-    const submit = () => {
+    const submit = async () => {
         if (mode === 'reject' && !reason.trim()) return;
-        onDone(complaint.id, mode === 'approve');
-        setMode(null);
-        setReason('');
+        setSaving(true);
+        setError('');
+        try {
+            const isApprove = mode === 'approve';
+            await api(`/complaints/${complaint.id}/resolve`, {
+                method: 'PATCH',
+                body: {
+                    status: isApprove ? 'diterima' : 'ditolak',
+                    adjustment_amount: isApprove ? Number(String(adjustment).replace(/[^\d]/g, '')) || 0 : null,
+                    resolution_note: isApprove ? (reason.trim() || 'Revisi timbangan disetujui') : reason.trim(),
+                },
+            });
+            onDone(complaint.id, isApprove);
+            setMode(null);
+            setReason('');
+            setAdjustment('');
+        } catch (err) {
+            setError(err.message || 'Gagal menyelesaikan komplain.');
+        } finally {
+            setSaving(false);
+        }
     };
+
+    const isResolved = complaint.status === 'diterima' || complaint.status === 'ditolak' || complaint.status === 'selesai';
 
     return (
         <Modal open onClose={onClose}>
             <div className="flex items-center justify-between px-6 py-4 bg-accent/60 border-b border-border/60">
                 <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
                     <MessageSquareWarning size={20} />
-                    <span>Detail Komplain {complaint.id}</span>
+                    <span>Detail Komplain #{complaint.id}</span>
                 </h2>
                 <button type="button" onClick={onClose} aria-label="Tutup"
                     className="rounded-lg p-1 text-muted-foreground hover:bg-black/5 hover:text-foreground transition-colors">
@@ -63,40 +65,39 @@ function ActionModal({ complaint, onClose, onDone }) {
                 <div className="grid gap-3 sm:grid-cols-2">
                     <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3.5">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Anggota</p>
-                        <p className="mt-1 text-sm font-semibold text-foreground">{complaint.member}</p>
-                        <p className="font-mono text-[11px] text-muted-foreground">{complaint.code}</p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">{complaint.member?.name || 'Anggota'}</p>
+                        <p className="font-mono text-[11px] text-muted-foreground">{complaint.member?.member_code || '-'}</p>
                     </div>
                     <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3.5">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Nota Terkait</p>
-                        <p className="mt-1 font-mono text-sm font-semibold text-primary">{complaint.receipt}</p>
-                        <p className="text-[11px] text-muted-foreground">{complaint.date}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Tiket Penjemputan</p>
+                        <p className="mt-1 font-mono text-sm font-semibold text-primary">Pickup #{complaint.pickup?.id || complaint.pickup_id}</p>
+                        <p className="text-[11px] text-muted-foreground">{dfmt(complaint.created_at)}</p>
                     </div>
                 </div>
 
-                {/* Rincian selisih */}
+                {/* Rincian keluhan */}
                 <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
-                    <p className="text-xs font-bold uppercase tracking-wider text-amber-800">Rincian Selisih — {complaint.reason}</p>
-                    <div className="mt-3 grid grid-cols-3 gap-3 text-center">
-                        <div>
-                            <p className="text-[10px] font-bold uppercase text-muted-foreground">Klaim Anggota</p>
-                            <strong className="mt-1 block text-sm font-bold text-foreground">{complaint.claimed}</strong>
+                    <p className="text-xs font-bold uppercase tracking-wider text-amber-800">
+                        Jenis Masalah: {complaint.issue_type?.replace('_', ' ').toUpperCase()}
+                    </p>
+                    <p className="mt-2 text-sm text-foreground">{complaint.description}</p>
+                    {complaint.proof_image && (
+                        <div className="mt-3">
+                            <a href={complaint.proof_image} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary underline">
+                                Lihat Foto Bukti
+                            </a>
                         </div>
-                        <div>
-                            <p className="text-[10px] font-bold uppercase text-muted-foreground">Tercatat Petugas</p>
-                            <strong className="mt-1 block text-sm font-bold text-foreground">{complaint.recorded}</strong>
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-bold uppercase text-muted-foreground">Selisih Nilai</p>
-                            <strong className="mt-1 block text-sm font-bold text-amber-700">{complaint.diffValue}</strong>
-                        </div>
-                    </div>
-                    <p className="mt-3 text-xs italic text-amber-900/80">"{complaint.note}"</p>
+                    )}
                 </div>
+
+                {error && <p className="text-xs font-medium text-destructive">{error}</p>}
 
                 {/* Aksi */}
-                {complaint.status === 'selesai' ? (
-                    <div className="flex items-center justify-center gap-2 rounded-xl bg-emerald-50 py-3 text-sm font-semibold text-emerald-700">
-                        <CheckCircle2 size={18} /> Komplain sudah diselesaikan
+                {isResolved ? (
+                    <div className="flex flex-col gap-1 rounded-xl bg-emerald-50 p-4 text-xs font-semibold text-emerald-800">
+                        <span className="flex items-center gap-1.5"><CheckCircle2 size={16} /> Status: {complaint.status?.toUpperCase()}</span>
+                        {complaint.resolution_note && <p className="text-muted-foreground font-normal mt-1">Catatan: {complaint.resolution_note}</p>}
+                        {complaint.adjustment_amount > 0 && <p className="text-emerald-700">Penyesuaian saldo: +{rp(complaint.adjustment_amount)}</p>}
                     </div>
                 ) : !mode ? (
                     <div className="grid grid-cols-2 gap-3">
@@ -116,9 +117,29 @@ function ActionModal({ complaint, onClose, onDone }) {
                 ) : (
                     <div className="flex flex-col gap-3">
                         {mode === 'approve' ? (
-                            <p className="rounded-xl bg-emerald-50 p-3 text-xs font-medium text-emerald-800">
-                                Saldo anggota akan dikoreksi bertambah <strong>{complaint.diffValue}</strong> sesuai selisih timbangan.
-                            </p>
+                            <div className="flex flex-col gap-2">
+                                <label className="text-xs font-semibold text-foreground/80">
+                                    Nominal Penyesuaian Saldo (Rp)
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        placeholder="0"
+                                        value={adjustment}
+                                        onChange={e => setAdjustment(e.target.value)}
+                                        className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm"
+                                    />
+                                </label>
+                                <label className="text-xs font-semibold text-foreground/80">
+                                    Catatan Persetujuan
+                                    <input
+                                        type="text"
+                                        placeholder="Alasan persetujuan koreksi…"
+                                        value={reason}
+                                        onChange={e => setReason(e.target.value)}
+                                        className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm"
+                                    />
+                                </label>
+                            </div>
                         ) : (
                             <div className="flex flex-col gap-1.5">
                                 <label htmlFor="reject-reason" className="text-xs font-semibold text-foreground/80">Alasan Penolakan</label>
@@ -134,20 +155,20 @@ function ActionModal({ complaint, onClose, onDone }) {
                         )}
                         <div className="grid grid-cols-2 gap-3">
                             <button
-                                onClick={() => { setMode(null); setReason(''); }}
+                                onClick={() => { setMode(null); setReason(''); setError(''); }}
                                 className="h-11 rounded-xl border border-border bg-card text-sm font-semibold text-foreground/80 hover:bg-secondary transition-all"
                             >
                                 Kembali
                             </button>
                             <button
                                 onClick={submit}
-                                disabled={mode === 'reject' && !reason.trim()}
+                                disabled={saving || (mode === 'reject' && !reason.trim())}
                                 className={cn(
                                     'h-11 rounded-xl text-sm font-semibold text-white shadow-sm transition-all disabled:opacity-50',
                                     mode === 'approve' ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-destructive hover:bg-destructive/90'
                                 )}
                             >
-                                {mode === 'approve' ? 'Konfirmasi Revisi' : 'Tolak dengan Alasan'}
+                                {saving ? 'Memproses…' : mode === 'approve' ? 'Konfirmasi Revisi' : 'Tolak dengan Alasan'}
                             </button>
                         </div>
                     </div>
@@ -157,23 +178,24 @@ function ActionModal({ complaint, onClose, onDone }) {
     );
 }
 
-export default function ComplaintsDeskPage() {
-    const { showStatus } = usePopup();
-    const [complaints, setComplaints] = useState(INITIAL_COMPLAINTS);
+export default function ComplaintsDeskPage({ onShowStatus }) {
+    const { data, loading, error, reload } = useApi('/complaints');
     const [detail, setDetail] = useState(null);
 
+    const complaints = data ?? [];
+
     const onDone = (id, approved) => {
-        setComplaints(prev => prev.map(c => c.id === id ? { ...c, status: 'selesai' } : c));
         setDetail(null);
-        showStatus(
+        reload();
+        onShowStatus?.(
             approved ? 'Revisi Saldo Disetujui' : 'Komplain Ditolak',
             approved
-                ? 'Saldo anggota telah dikoreksi otomatis sesuai selisih timbangan.'
-                : 'Komplain ditandai selesai dengan alasan penolakan yang tercatat.'
+                ? 'Saldo anggota telah dikoreksi otomatis sesuai nominal penyesuaian.'
+                : 'Komplain ditandai ditolak dengan alasan yang tercatat.'
         );
     };
 
-    const waiting = complaints.filter(c => c.status === 'menunggu').length;
+    const waiting = complaints.filter(c => c.status === 'diajukan' || c.status === 'diproses').length;
 
     return (
         <div className="flex flex-col gap-6">
@@ -183,9 +205,9 @@ export default function ComplaintsDeskPage() {
             />
 
             <div className="grid gap-5 md:grid-cols-3">
-                <StatCard icon={MessageSquareWarning} label="Total Komplain" value={`${complaints.length} Kasus`} note="7 hari terakhir" tone="blue" />
+                <StatCard icon={MessageSquareWarning} label="Total Komplain" value={`${complaints.length} Kasus`} note="Semua laporan" tone="blue" />
                 <StatCard icon={Clock} label="Menunggu Tindakan" value={`${waiting} Kasus`} note="⚠ Perlu keputusan" tone="gold" />
-                <StatCard icon={CheckCircle2} label="Selesai" value={`${complaints.length - waiting} Kasus`} note="✓ Tertangani" tone="green" />
+                <StatCard icon={CheckCircle2} label="Selesai Ditangani" value={`${complaints.length - waiting} Kasus`} note="✓ Tertangani" tone="green" />
             </div>
 
             <section className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
@@ -196,36 +218,41 @@ export default function ComplaintsDeskPage() {
                     <table className="w-full min-w-[750px] text-left text-sm">
                         <thead className="bg-[#eef3fc] text-xs font-bold uppercase tracking-wider text-slate-700">
                             <tr>
-                                <th className="px-6 py-3.5">ID Komplain</th>
+                                <th className="px-6 py-3.5">ID</th>
                                 <th className="px-6 py-3.5">Anggota</th>
-                                <th className="px-6 py-3.5">Alasan</th>
-                                <th className="px-6 py-3.5">Selisih Nilai</th>
+                                <th className="px-6 py-3.5">Jenis Masalah</th>
+                                <th className="px-6 py-3.5">Deskripsi</th>
                                 <th className="px-6 py-3.5">Tanggal</th>
                                 <th className="px-6 py-3.5">Status</th>
                                 <th className="px-6 py-3.5 text-right">Aksi</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
+                            {loading && <tr><td colSpan={7} className="px-6 py-8 text-center text-sm text-muted-foreground">Memuat data komplain…</td></tr>}
+                            {!loading && complaints.length === 0 && (
+                                <tr><td colSpan={7} className="px-6 py-8 text-center text-sm text-muted-foreground">{error ? 'Gagal memuat data.' : 'Belum ada pengaduan komplain.'}</td></tr>
+                            )}
                             {complaints.map(c => (
                                 <tr key={c.id} className="hover:bg-secondary/40 transition-colors">
-                                    <td className="px-6 py-4 font-mono text-xs font-bold text-foreground">{c.id}</td>
+                                    <td className="px-6 py-4 font-mono text-xs font-bold text-foreground">#{c.id}</td>
                                     <td className="px-6 py-4">
-                                        <span className="block font-semibold text-foreground">{c.member}</span>
-                                        <span className="font-mono text-[11px] text-muted-foreground">{c.code}</span>
+                                        <span className="block font-semibold text-foreground">{c.member?.name ?? '-'}</span>
+                                        <span className="font-mono text-[11px] text-muted-foreground">{c.member?.member_code ?? '-'}</span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-primary">
-                                            <Scale size={13} /> {c.reason}
+                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-primary capitalize">
+                                            <Scale size={13} /> {c.issue_type?.replace('_', ' ')}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 font-bold text-amber-700">{c.diffValue}</td>
-                                    <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">{c.date.split(',')[0]}</td>
+                                    <td className="px-6 py-4 text-xs text-foreground max-w-xs truncate">{c.description}</td>
+                                    <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">{dfmt(c.created_at)}</td>
                                     <td className="px-6 py-4">
                                         <span className={cn(
-                                            'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                                            c.status === 'selesai' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
+                                            'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize',
+                                            c.status === 'diterima' ? 'bg-emerald-100 text-emerald-700' :
+                                            c.status === 'ditolak' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'
                                         )}>
-                                            ● {c.status === 'selesai' ? 'Selesai' : 'Menunggu'}
+                                            ● {c.status}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">
@@ -242,7 +269,7 @@ export default function ComplaintsDeskPage() {
                     </table>
                 </div>
                 <div className="p-4 text-center text-xs text-muted-foreground border-t border-border/60 bg-slate-50/50">
-                    Menampilkan {complaints.length} dari 27 komplain bulan ini.
+                    Menampilkan {complaints.length} komplain.
                 </div>
             </section>
 

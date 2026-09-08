@@ -9,6 +9,7 @@ import {
 import { ManagerShell } from '@/Components/Koperasi/ManagerShell';
 import { FormPopup, StatusPopup } from '@/Components/Koperasi/Popups';
 import { api, useApi, rp, dfmt } from '@/lib/api';
+import ComplaintsDeskPage from './ComplaintsDesk';
 
 // ─── Popup context ────────────────────────────────────────────
 const PopupCtx = createContext({ openForm: () => {}, showStatus: () => {} });
@@ -983,6 +984,7 @@ function BackButton({ setPage }) {
 
 // ─── Router Component ─────────────────────────────────────────
 function ManagerPages({ page, setPage }) {
+    const { showStatus } = usePopup();
     switch (page) {
         case 'dashboard':
             return <DashboardPage setPage={setPage} />;
@@ -1000,6 +1002,8 @@ function ManagerPages({ page, setPage }) {
             return <TransactionPage type="income" title="Manajemen Pendapatan" desc="Kelola dan pantau seluruh arus pendapatan koperasi secara real-time." />;
         case 'pengeluaran':
             return <TransactionPage type="expense" title="Manajemen Pengeluaran" desc="Pantau biaya operasional dan pengeluaran unit usaha secara real-time." />;
+        case 'pengaduan':
+            return <ComplaintsDeskPage onShowStatus={showStatus} />;
         case 'laporan':
             return <ReportHubPage setPage={setPage} />;
         case 'laporan-laba-rugi':
@@ -1022,6 +1026,7 @@ const pageTitles = {
     'shu': 'Sisa Hasil Usaha (SHU)',
     'pendapatan': 'Manajemen Pendapatan',
     'pengeluaran': 'Manajemen Pengeluaran',
+    'pengaduan': 'Helpdesk Pengaduan',
     'laporan': 'Pusat Laporan',
     'laporan-laba-rugi': 'Laporan Laba Rugi (P&L)',
     'laporan-simpanan-anggota': 'Laporan Simpanan Anggota',

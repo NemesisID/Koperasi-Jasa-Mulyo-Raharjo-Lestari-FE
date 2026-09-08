@@ -10,7 +10,7 @@ import {
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
 // ─── Native modal overlay with animation ──────────────────────
-function Modal({ open, onClose, children }) {
+export function Modal({ open, onClose, children }) {
     if (!open) return null;
     return (
         <div

@@ -2,6 +2,7 @@
 // (berat salah / kategori salah), input angka koreksi, unggah foto bukti.
 import { useState } from 'react';
 import { ImageUp, MessageSquareWarning, Trash2, X } from 'lucide-react';
+import { api } from '@/lib/api';
 import { Modal } from './Popups';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
@@ -10,20 +11,50 @@ export default function ComplaintFormModal({ receipt, onClose, onSuccess }) {
     const [reason, setReason] = useState('Berat salah');
     const [correction, setCorrection] = useState('');
     const [photo, setPhoto] = useState(null);
+    const [photoFile, setPhotoFile] = useState(null);
     const [error, setError] = useState('');
+    const [submitting, setSubmitting] = useState(false);
 
     if (!receipt) return null;
 
     const inputCls = 'h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all placeholder:text-muted-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15';
 
-    const submit = (e) => {
+    const submit = async (e) => {
         e.preventDefault();
         if (!correction.trim()) { setError('Isi nilai koreksi sesuai pengaduan Anda.'); return; }
         setError('');
-        onSuccess();
-        setReason('Berat salah');
-        setCorrection('');
-        setPhoto(null);
+        setSubmitting(true);
+
+        try {
+            const pickupId = Number(receipt.pickup_id || receipt.id);
+            const issueType = reason === 'Berat salah' ? 'berat_salah' : 'kategori_salah';
+            const description = `${reason}: ${correction}`;
+
+            let res;
+            if (photoFile) {
+                const fd = new FormData();
+                fd.append('pickup_id', String(pickupId));
+                fd.append('issue_type', issueType);
+                fd.append('description', description);
+                fd.append('proof_image', photoFile);
+                res = await api('/complaints', { method: 'POST', body: fd });
+            } else {
+                res = await api('/complaints', {
+                    method: 'POST',
+                    body: { pickup_id: pickupId, issue_type: issueType, description },
+                });
+            }
+
+            onSuccess?.(res?.message || 'Komplain berhasil diajukan');
+            setReason('Berat salah');
+            setCorrection('');
+            setPhoto(null);
+            setPhotoFile(null);
+        } catch (err) {
+            setError(err.errors?.description?.[0] || err.message || 'Gagal mengirim komplain.');
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
@@ -42,8 +73,8 @@ export default function ComplaintFormModal({ receipt, onClose, onSuccess }) {
             <form onSubmit={submit} className="flex flex-col gap-4 p-6 bg-card">
                 <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3.5 text-xs">
                     <p className="font-bold uppercase tracking-wider text-muted-foreground">Nota Terkait</p>
-                    <p className="mt-1 font-mono font-bold text-primary">{receipt.id}</p>
-                    <p className="text-muted-foreground">{receipt.date} — {receipt.itemsSummary}</p>
+                    <p className="mt-1 font-mono font-bold text-primary">#{receipt.id} {receipt.transaction_code ? `(${receipt.transaction_code})` : ''}</p>
+                    <p className="text-muted-foreground">{receipt.date || receipt.scheduled_at} {receipt.itemsSummary ? `— ${receipt.itemsSummary}` : ''}</p>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
@@ -110,7 +141,7 @@ export default function ComplaintFormModal({ receipt, onClose, onSuccess }) {
                             <img src={photo} alt="Bukti timbangan" className="h-36 w-full rounded-xl border border-border object-cover" />
                             <button
                                 type="button"
-                                onClick={() => setPhoto(null)}
+                                onClick={() => { setPhoto(null); setPhotoFile(null); }}
                                 aria-label="Hapus foto"
                                 className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-lg bg-destructive text-white shadow-sm hover:bg-destructive/90"
                             >
@@ -127,7 +158,10 @@ export default function ComplaintFormModal({ receipt, onClose, onSuccess }) {
                                 className="sr-only"
                                 onChange={e => {
                                     const file = e.target.files?.[0];
-                                    if (file) setPhoto(URL.createObjectURL(file));
+                                    if (file) {
+                                        setPhotoFile(file);
+                                        setPhoto(URL.createObjectURL(file));
+                                    }
                                 }}
                             />
                         </label>
@@ -146,9 +180,10 @@ export default function ComplaintFormModal({ receipt, onClose, onSuccess }) {
                     </button>
                     <button
                         type="submit"
-                        className="h-11 flex-[1.5] rounded-xl bg-primary text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
+                        disabled={submitting}
+                        className="h-11 flex-[1.5] rounded-xl bg-primary text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-50"
                     >
-                        Kirim Komplain
+                        {submitting ? 'Mengirim…' : 'Kirim Komplain'}
                     </button>
                 </div>
             </form>

@@ -152,7 +152,7 @@ function WajibPage({ openForm }) {
 }
 
 // ─── 3. Simpanan Sukarela Sub-page ────────────────────────────
-function SukarelaPage({ openForm }) {
+function SukarelaPage() {
     const { data, loading } = useApi('/savings?label=SUKARELA');
     const rows = data ?? [];
     const total = rows.reduce((s, r) => s + Number(r.jumlah), 0);
@@ -162,15 +162,6 @@ function SukarelaPage({ openForm }) {
             <PageTitle
                 title="Simpanan Sukarela"
                 description="Kelola dana simpanan sukarela Anda dengan transparansi penuh."
-                action={
-                    <button
-                        onClick={() => openForm('voluntary')}
-                        className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
-                    >
-                        <Plus size={16} />
-                        <span>Input Simpanan Sukarela</span>
-                    </button>
-                }
             />
 
             <SummaryCard title="Simpanan Sukarela Pribadi" amount={rp(total)} note={`${rows.length} transaksi`} />
@@ -209,13 +200,12 @@ function ReportsPage({ setPage }) {
     const reportCards = [
         { title: 'Laporan SHU', desc: 'Riwayat dividen tahunan Anda — jasa modal dan partisipasi usaha.', icon: UserRound, key: 'laporan-shu', bg: 'bg-blue-50 text-primary' },
         { title: 'Laporan Saldo', desc: 'Saldo wallet dari hasil setoran sampah Anda.', icon: WalletCards, key: 'laporan-saldo', bg: 'bg-purple-50 text-purple-700' },
-        { title: 'Laporan Laba Rugi', desc: 'Performa keuangan koperasi periode berjalan.', icon: TrendingUp, key: 'laporan-laba-rugi', bg: 'bg-emerald-50 text-emerald-700' },
     ];
 
     return (
         <div className="flex flex-col gap-6">
             <PageTitle title="Pusat Laporan" description="Akses semua data finansial dan operasional pada akun Anda." />
-            <div className="grid gap-6 md:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-2">
                 {reportCards.map((c, i) => {
                     const Icon = c.icon;
                     return (
@@ -323,47 +313,6 @@ function SaldoReportPage({ setPage }) {
     );
 }
 
-function ProfitPage({ setPage }) {
-    const now = new Date();
-    const start = `${now.getFullYear()}-01-01`;
-    const end = now.toISOString().slice(0, 10);
-    const { data: fin, loading } = useApi(`/reports/financial?period_start=${start}&period_end=${end}`);
-
-    return (
-        <div className="flex flex-col gap-6">
-            <BackButton setPage={setPage} />
-            <PageTitle title="Laporan Laba Rugi Koperasi" description="Rekapitulasi performa keuangan koperasi periode berjalan." />
-            <div className="grid gap-5 md:grid-cols-3">
-                <MetricCard icon={<TrendingUp size={20} />} label="Total Pendapatan" value={rp(fin?.total_income)} note={`Periode ${dfmt(start)} – ${dfmt(end)}`} tone="green" />
-                <MetricCard icon={<TrendingDown size={20} />} label="Total Beban" value={rp(fin?.total_expense)} note="Beban & biaya operasional" tone="red" />
-                <MetricCard icon={<Banknote size={20} />} label="Laba Bersih (SHU)" value={rp(fin?.net_profit)} note={loading ? 'Memuat…' : 'Periode berjalan'} featured />
-            </div>
-            <DataPanel
-                title="Detail Rincian Laba Rugi"
-                toolbar={
-                    <button onClick={() => window.print()} className="h-9 rounded-xl border border-primary px-3 text-xs font-semibold text-primary">
-                        Cetak
-                    </button>
-                }
-                headers={['Kategori Keuangan', 'Jenis', 'Nilai (IDR)']}
-                rows={loading
-                    ? [[<span key="l" className="text-muted-foreground">Memuat laporan…</span>, '', '']]
-                    : [
-                        ...[['PENDAPATAN OPERASIONAL', '', ''], ...(fin?.income ?? []).map(r => [r.category ?? '-', 'Pendapatan', r.total])].map(r => [
-                            <strong key={r[0]} className="text-emerald-700">{r[0]}</strong>, r[1],
-                            <strong key={r[0] + '-v'} className="text-emerald-700">{typeof r[2] === 'number' || typeof r[2] === 'string' && r[2] ? rp(r[2]) : ''}</strong>
-                        ]),
-                        ...[['BEBAN OPERASIONAL', '', ''], ...(fin?.expense ?? []).map(r => [r.category ?? '-', 'Beban', r.total])].map(r => [
-                            <strong key={r[0]} className="text-rose-700">{r[0]}</strong>, r[1],
-                            <strong key={r[0] + '-v'} className="text-rose-700">{typeof r[2] === 'number' || typeof r[2] === 'string' && r[2] ? rp(r[2]) : ''}</strong>
-                        ]),
-                    ]}
-                footer={`Laba bersih periode ini: ${rp(fin?.net_profit)}`}
-            />
-        </div>
-    );
-}
-
 // ─── Router Component ─────────────────────────────────────────
 function MemberPages({ page, setPage, openForm }) {
     switch (page) {
@@ -372,15 +321,13 @@ function MemberPages({ page, setPage, openForm }) {
         case 'simpanan-wajib':
             return <WajibPage openForm={openForm} />;
         case 'simpanan-sukarela':
-            return <SukarelaPage openForm={openForm} />;
+            return <SukarelaPage />;
         case 'laporan':
             return <ReportsPage setPage={setPage} />;
         case 'laporan-shu':
             return <ShuReportPage setPage={setPage} />;
         case 'laporan-saldo':
             return <SaldoReportPage setPage={setPage} />;
-        case 'laporan-laba-rugi':
-            return <ProfitPage setPage={setPage} />;
         default:
             return <DashboardPage />;
     }
@@ -393,7 +340,6 @@ const memberPageTitles = {
     'laporan': 'Pusat Laporan Anggota',
     'laporan-shu': 'Laporan SHU Anggota',
     'laporan-saldo': 'Laporan Saldo Sampah',
-    'laporan-laba-rugi': 'Laporan Laba Rugi Koperasi',
 };
 
 export default function AnggotaIndex() {

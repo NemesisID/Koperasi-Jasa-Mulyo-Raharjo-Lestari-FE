@@ -4,40 +4,52 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp, MessageSquareWarning, Recycle, Wallet } from 'lucide-react';
 import ComplaintFormModal from '@/Components/Koperasi/ComplaintFormModal';
 import { StatusPopup } from '@/Components/Koperasi/Popups';
+import { useApi, rp, dfmt } from '@/lib/api';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
-
-const rp = (n) => 'Rp ' + n.toLocaleString('id-ID');
-
-// ponytail: mock nota sampai endpoint /pickups (riwayat anggota) tersedia.
-const RECEIPTS = [
-    {
-        id: 'NTR-20260903-0091', date: '03 Sep 2026, 09:15 WIB', location: 'Dijemput di Rumah',
-        items: [{ name: 'Botol PET Bening', weight: '8.5', unit: 'kg', total: 27200 }],
-        gross: 27200, fee: 5440, net: 21760, complaint: false,
-    },
-    {
-        id: 'NTR-20260901-0084', date: '01 Sep 2026, 15:40 WIB', location: 'Diantar ke Gudang',
-        items: [
-            { name: 'Kardus / Karton', weight: '12.0', unit: 'kg', total: 24000 },
-            { name: 'Kaleng Aluminium', weight: '1.5', unit: 'kg', total: 18000 },
-        ],
-        gross: 42000, fee: 8400, net: 33600, complaint: false,
-    },
-    {
-        id: 'NTR-20260828-0079', date: '28 Agu 2026, 10:05 WIB', location: 'Dijemput di Rumah',
-        items: [{ name: 'Plastik Kresek', weight: '6.2', unit: 'kg', total: 7440 }],
-        gross: 7440, fee: 1488, net: 5952, complaint: 'KMP-2026-0118',
-    },
-];
 
 export default function ReceiptsPage() {
     const [expanded, setExpanded] = useState(null);
     const [complainFor, setComplainFor] = useState(null);
     const [status, setStatus] = useState('');
 
+    const { data: pickups, loading, reload: reloadPickups } = useApi('/pickups?per_page=30');
+    const { data: complaints, reload: reloadComplaints } = useApi('/complaints');
+
+    const complaintMap = new Map((complaints ?? []).map(c => [c.pickup?.id, c]));
+
+    const receipts = (pickups ?? []).map(p => {
+        const rawItems = p.items ?? [];
+        const items = rawItems.map(i => ({
+            name: i.category?.name || 'Sampah',
+            weight: i.weight_kg ?? i.unit_count ?? 0,
+            unit: i.category?.unit || 'kg',
+            total: Number(i.total_value || 0),
+        }));
+
+        return {
+            id: p.id,
+            code: `NTR-${String(p.id).padStart(6, '0')}`,
+            date: p.completed_at ? dfmt(p.completed_at) : (p.scheduled_at ? dfmt(p.scheduled_at) : '-'),
+            location: p.location_type === 'jemput_rumah' ? 'Dijemput di Rumah' : 'Diantar ke Gudang',
+            status: p.status,
+            items,
+            gross: Number(p.total_gross || 0),
+            fee: Number(p.total_fee || 0),
+            net: Number(p.total_net || 0),
+            complaint: complaintMap.get(p.id),
+        };
+    });
+
     const itemsSummary = (r) =>
-        r.items.map(i => `${i.name} ${i.weight}${i.unit}`).join(', ');
+        r.items.length > 0
+            ? r.items.map(i => `${i.name} ${i.weight} ${i.unit}`).join(', ')
+            : (r.status === 'menunggu_timbang' ? 'Menunggu Penimbangan Petugas' : 'Tanpa Rincian');
+
+    const reloadAll = () => {
+        reloadPickups();
+        reloadComplaints();
+    };
 
     return (
         <div className="flex flex-col gap-6">
@@ -46,8 +58,20 @@ export default function ReceiptsPage() {
                 <p className="mt-1 text-sm text-muted-foreground">Semua transaksi setor sampah Anda beserta rincian nota resmi koperasi.</p>
             </div>
 
+            {loading && (
+                <div className="rounded-2xl border border-border/80 bg-card p-10 text-center text-sm text-muted-foreground">
+                    Memuat riwayat nota setoran…
+                </div>
+            )}
+
+            {!loading && receipts.length === 0 && (
+                <div className="rounded-2xl border border-border/80 bg-card p-10 text-center text-sm text-muted-foreground">
+                    Belum ada riwayat setoran sampah. Anda dapat menyetor sampah ke gudang atau mengajukan penjemputan.
+                </div>
+            )}
+
             <div className="flex flex-col gap-4">
-                {RECEIPTS.map(receipt => {
+                {receipts.map(receipt => {
                     const open = expanded === receipt.id;
                     return (
                         <article key={receipt.id} className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs transition-all hover:shadow-md">
@@ -62,7 +86,7 @@ export default function ReceiptsPage() {
                                     <Recycle size={22} />
                                 </span>
                                 <div className="min-w-0 flex-1">
-                                    <p className="font-mono text-xs font-bold text-primary">{receipt.id}</p>
+                                    <p className="font-mono text-xs font-bold text-primary">{receipt.code}</p>
                                     <p className="truncate text-sm font-semibold text-foreground">{itemsSummary(receipt)}</p>
                                     <p className="text-xs text-muted-foreground">{receipt.date} · {receipt.location}</p>
                                 </div>
@@ -80,26 +104,32 @@ export default function ReceiptsPage() {
                             {/* Rincian expansible */}
                             {open && (
                                 <div className="border-t border-border/60 bg-slate-50/50 p-5">
-                                    <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
-                                        <table className="w-full text-left text-xs">
-                                            <thead className="bg-[#eef3fc] text-[10px] font-bold uppercase tracking-wider text-slate-700">
-                                                <tr>
-                                                    <th className="px-4 py-2.5">Jenis Sampah</th>
-                                                    <th className="px-4 py-2.5 text-right">Berat</th>
-                                                    <th className="px-4 py-2.5 text-right">Nilai</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-border/60">
-                                                {receipt.items.map((item, i) => (
-                                                    <tr key={i}>
-                                                        <td className="px-4 py-2.5 font-semibold text-foreground">{item.name}</td>
-                                                        <td className="px-4 py-2.5 text-right text-muted-foreground">{item.weight} {item.unit}</td>
-                                                        <td className="px-4 py-2.5 text-right font-bold text-foreground">{rp(item.total)}</td>
+                                    {receipt.items.length > 0 ? (
+                                        <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="bg-[#eef3fc] text-[10px] font-bold uppercase tracking-wider text-slate-700">
+                                                    <tr>
+                                                        <th className="px-4 py-2.5">Jenis Sampah</th>
+                                                        <th className="px-4 py-2.5 text-right">Berat / Jumlah</th>
+                                                        <th className="px-4 py-2.5 text-right">Nilai</th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                                </thead>
+                                                <tbody className="divide-y divide-border/60">
+                                                    {receipt.items.map((item, i) => (
+                                                        <tr key={i}>
+                                                            <td className="px-4 py-2.5 font-semibold text-foreground">{item.name}</td>
+                                                            <td className="px-4 py-2.5 text-right text-muted-foreground">{item.weight} {item.unit}</td>
+                                                            <td className="px-4 py-2.5 text-right font-bold text-foreground">{rp(item.total)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-muted-foreground italic mb-3">
+                                            Status: {receipt.status === 'menunggu_timbang' ? 'Menunggu penimbangan oleh petugas' : receipt.status}
+                                        </p>
+                                    )}
 
                                     <div className="mt-4 flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
                                         <div className="flex flex-col gap-1">
@@ -113,8 +143,16 @@ export default function ReceiptsPage() {
                                             </div>
                                         </div>
                                         {receipt.complaint ? (
-                                            <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-amber-100 px-3.5 py-1.5 text-xs font-bold text-amber-800 sm:self-auto">
-                                                <MessageSquareWarning size={13} /> Komplain {receipt.complaint} diproses
+                                            <span className={cn(
+                                                'inline-flex items-center gap-1.5 self-start rounded-full px-3.5 py-1.5 text-xs font-bold sm:self-auto',
+                                                receipt.complaint.status === 'diterima'
+                                                    ? 'bg-emerald-100 text-emerald-800'
+                                                    : receipt.complaint.status === 'ditolak'
+                                                    ? 'bg-rose-100 text-rose-800'
+                                                    : 'bg-amber-100 text-amber-800'
+                                            )}>
+                                                <MessageSquareWarning size={13} />
+                                                Komplain #{receipt.complaint.id} ({receipt.complaint.status})
                                             </span>
                                         ) : (
                                             <button
@@ -139,6 +177,7 @@ export default function ReceiptsPage() {
                 onSuccess={() => {
                     setComplainFor(null);
                     setStatus('Komplain Berhasil Dikirim');
+                    reloadAll();
                 }}
             />
 

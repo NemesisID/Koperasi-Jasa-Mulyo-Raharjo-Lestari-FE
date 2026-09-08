@@ -12,16 +12,17 @@ export default function UpdateProfileInformation({
 }) {
     const user = usePage().props.auth.user;
 
-    const { data, setData, patch, errors, processing, recentlySuccessful } =
+    const { data, setData, put, errors, processing, recentlySuccessful } =
         useForm({
             name: user?.name ?? '',
-            email: user?.email ?? '',
+            phone: user?.phone ?? '',
+            address: user?.address ?? '',
         });
 
     const submit = (e) => {
         e.preventDefault();
 
-        patch('/auth/profile');
+        put('/auth/profile');
     };
 
     return (
@@ -32,7 +33,7 @@ export default function UpdateProfileInformation({
                 </h2>
 
                 <p className="mt-1 text-sm text-gray-600">
-                    Update your account's profile information and email address.
+                    Update your account's profile information, phone number, and address.
                 </p>
             </header>
 
@@ -54,19 +55,34 @@ export default function UpdateProfileInformation({
                 </div>
 
                 <div>
-                    <InputLabel htmlFor="email" value="Email" />
+                    <InputLabel htmlFor="phone" value="Phone" />
 
                     <TextInput
-                        id="email"
-                        type="email"
+                        id="phone"
+                        type="text"
                         className="mt-1 block w-full"
-                        value={data.email}
-                        onChange={(e) => setData('email', e.target.value)}
-                        required
-                        autoComplete="username"
+                        value={data.phone}
+                        onChange={(e) => setData('phone', e.target.value)}
+                        autoComplete="tel"
+                        placeholder="08xxxxxxxxxx"
                     />
 
-                    <InputError className="mt-2" message={errors.email} />
+                    <InputError className="mt-2" message={errors.phone} />
+                </div>
+
+                <div>
+                    <InputLabel htmlFor="address" value="Address" />
+
+                    <TextInput
+                        id="address"
+                        type="text"
+                        className="mt-1 block w-full"
+                        value={data.address}
+                        onChange={(e) => setData('address', e.target.value)}
+                        autoComplete="street-address"
+                    />
+
+                    <InputError className="mt-2" message={errors.address} />
                 </div>
 
                 {mustVerifyEmail && user.email_verified_at === null && (
