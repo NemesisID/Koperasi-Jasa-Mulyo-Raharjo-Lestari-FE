@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import {
     ArrowDownToLine, Check, Eye, EyeOff, Leaf, LogOut,
     Plus, Save, TrendingDown,
@@ -150,20 +152,99 @@ const configs = {
 
 export function FormPopup({ kind, onClose, onSuccess }) {
     const [error, setError] = useState('');
+    const [saving, setSaving] = useState(false);
     const [showPw, setShowPw] = useState(false);
+    const { user } = useAuth();
     if (!kind || !configs[kind]) return null;
     const { title, icon: Icon, tone, submit, submitCls, bg } = configs[kind];
 
-    const handleSubmit = (e) => {
+    // ponytail: member_id diketik manual — ganti search-select member kalau sering dipakai.
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        const required = [...e.currentTarget.querySelectorAll('[required]')];
-        if (required.some(f => !f.value.trim())) {
-            setError('Lengkapi semua data yang wajib diisi.');
-            return;
-        }
+        const fd = new FormData(e.currentTarget);
         setError('');
-        onClose();
-        onSuccess('Data Berhasil Disimpan');
+        setSaving(true);
+        try {
+            let res;
+            if (kind === 'income') {
+                const cats = (await api('/finance-categories?type=income')).data;
+                const cat = cats.find(c => c.name === fd.get('source')) ?? cats[0];
+                res = await api('/transactions', {
+                    method: 'POST',
+                    body: {
+                        category_id: cat?.id,
+                        type: 'income',
+                        amount: Number(String(fd.get('amount')).replace(/[^\d]/g, '')),
+                        description: fd.get('note') || null,
+                        payment_method: 'tunai',
+                    },
+                });
+            } else if (kind === 'expense') {
+                const cats = (await api('/finance-categories?type=expense')).data;
+                const cat = cats.find(c => c.name === fd.get('category')) ?? cats.find(c => c.group_type === 'operasional');
+                res = await api('/transactions', {
+                    method: 'POST',
+                    body: {
+                        category_id: cat?.id,
+                        type: 'expense',
+                        amount: Number(String(fd.get('amount')).replace(/[^\d]/g, '')),
+                        description: fd.get('description') || null,
+                        payment_method: 'tunai',
+                    },
+                });
+            } else if (kind === 'voluntary') {
+                res = await api('/savings/pay', {
+                    method: 'POST',
+                    body: {
+                        member_id: Number(fd.get('member')),
+                        label: 'SUKARELA',
+                        jumlah: Number(String(fd.get('amount')).replace(/[^\d]/g, '')),
+                        metode: 'tunai',
+                        catatan: fd.get('note') || null,
+                    },
+                });
+            } else if (kind === 'waste') {
+                // Anggota setor untuk dirinya sendiri; petugas/pengurus pilih member manual.
+                const memberId = user?.role === 'anggota' ? user?.member?.id : Number(fd.get('member'));
+                res = await api('/pickups', {
+                    method: 'POST',
+                    body: {
+                        member_id: memberId,
+                        location_type: 'gudang',
+                        notes: `Jenis: ${fd.get('wasteType')}, berat ${fd.get('weight')} kg`,
+                    },
+                });
+            } else if (kind === 'member') {
+                // Registrasi anggota via auth register-member (menunggu verifikasi)
+                res = await api('/auth/register-member', {
+                    method: 'POST',
+                    body: {
+                        name: fd.get('memberName'),
+                        username: fd.get('username'),
+                        email: `${fd.get('username')}@anggota.local`,
+                        password: fd.get('password'),
+                        member_type: 'rumah',
+                        phone: '0000000000',
+                        address: fd.get('address') || '-',
+                    },
+                });
+            } else if (kind === 'distribution') {
+                res = await api('/shu/simulate?save=1', {
+                    method: 'POST',
+                    body: {
+                        year: Number(fd.get('year')),
+                        net_profit: Number(String(fd.get('totalShu')).replace(/[^\d]/g, '')),
+                    },
+                });
+            }
+            onClose();
+            onSuccess(res?.message || 'Data Berhasil Disimpan');
+        } catch (err) {
+            const fieldErrs = err.errors && Object.values(err.errors)[0]?.[0];
+            setError(fieldErrs || err.message || 'Gagal menyimpan data.');
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -235,7 +316,9 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                 {kind === 'waste' && (
                     <>
                         <div className="grid gap-3 sm:grid-cols-2">
-                            <Field name="member" label="Nama Anggota / ID" placeholder="Masukkan Nama atau No. ID" />
+                            {user?.role !== 'anggota' && (
+                                <Field name="member" label="Nama Anggota / ID" placeholder="Masukkan Nama atau No. ID" />
+                            )}
                             <SelectField name="wasteType" label="Jenis Sampah" options={['Organik', 'Anorganik', 'Plastik', 'Kardus/Kertas', 'Minyak Jelantah']} />
                         </div>
                         <Field name="weight" label="Berat Sampah (kg)" placeholder="0.0" type="number" />
@@ -279,9 +362,10 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                     </button>
                     <button
                         type="submit"
-                        className={cn('h-11 flex-[1.5] rounded-xl text-sm font-semibold shadow-sm transition-all hover:shadow', submitCls)}
+                        disabled={saving}
+                        className={cn('h-11 flex-[1.5] rounded-xl text-sm font-semibold shadow-sm transition-all hover:shadow disabled:opacity-60', submitCls)}
                     >
-                        {submit}
+                        {saving ? 'Menyimpan...' : submit}
                     </button>
                 </div>
             </form>

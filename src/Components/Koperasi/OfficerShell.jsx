@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { router } from '@/lib/shims';
+import { useNavigate } from 'react-router-dom';
+import { useAuth, logout } from '@/lib/auth';
 import {
     Bell, CircleHelp, FileBarChart, LayoutGrid,
     LogOut, Menu, Settings, Truck, UserRound, X,
@@ -9,6 +10,8 @@ import { ConfirmPopup } from './Popups';
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
 export function OfficerShell({ children, currentPage, setPage }) {
+    const navigate = useNavigate();
+    const { user } = useAuth();
     const [mobileOpen, setMobileOpen] = useState(false);
     const [logoutOpen, setLogoutOpen] = useState(false);
 
@@ -103,7 +106,7 @@ export function OfficerShell({ children, currentPage, setPage }) {
                     </button>
                     <div>
                         <h1 className="text-base font-bold text-foreground md:text-lg">
-                            Selamat Datang, <span className="text-primary font-semibold">(Nama)</span>
+                            Selamat Datang, <span className="text-primary font-semibold">{user?.name || 'Petugas'}</span>
                         </h1>
                         <p className="text-xs text-muted-foreground">Koperasi Jasa Mulyo Raharjo Lestari</p>
                     </div>
@@ -118,9 +121,9 @@ export function OfficerShell({ children, currentPage, setPage }) {
                     </button>
                     <div className="flex items-center gap-2.5 rounded-full bg-[#e8efff] py-1.5 pl-4 pr-1.5 text-primary">
                         <div className="text-right leading-none">
-                            <p className="text-xs font-semibold text-foreground">(Nama)</p>
+                            <p className="text-xs font-semibold text-foreground">{user?.name || 'Petugas'}</p>
                             <span className="inline-block mt-0.5 rounded-full bg-primary px-2 py-0.5 text-[9px] font-bold tracking-widest text-white">
-                                PETUGAS
+                                {(user?.role || 'PETUGAS').toUpperCase()}
                             </span>
                         </div>
                         <div className="flex size-8 items-center justify-center rounded-full border-2 border-primary bg-card text-primary shadow-sm">
@@ -143,7 +146,7 @@ export function OfficerShell({ children, currentPage, setPage }) {
                 tone="destructive"
                 icon="logout"
                 onCancel={() => setLogoutOpen(false)}
-                onConfirm={() => router.visit('/')}
+                onConfirm={async () => { await logout(); navigate('/'); }}
             />
         </div>
     );

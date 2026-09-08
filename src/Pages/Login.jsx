@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Head, router } from '@/lib/shims';
-import { ArrowLeft, Building2, Eye, EyeOff, Leaf, LockKeyhole, LogIn, ShieldCheck, UserRound } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Head } from '@/lib/shims';
+import { login, useAuth, logout } from '@/lib/auth';
+import { Building2, Eye, EyeOff, Leaf, LockKeyhole, LogIn, UserRound } from 'lucide-react';
 
-const roles = ['Pengurus', 'Anggota', 'Petugas Sampah'];
+const HOME_BY_ROLE = { pengurus: '/pengurus', ketua: '/pengurus', petugas: '/petugas', anggota: '/anggota' };
 
 function FeatureCard({ icon: Icon, title, description, green = false }) {
     return (
@@ -15,18 +17,29 @@ function FeatureCard({ icon: Icon, title, description, green = false }) {
 }
 
 function LoginCard() {
-    const [role, setRole] = useState('Anggota');
+    const navigate = useNavigate();
+    const { setUser } = useAuth();
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
+    const [processing, setProcessing] = useState(false);
 
-    function handleSubmit(e) {
+    async function handleSubmit(e) {
         e.preventDefault();
         const data = new FormData(e.currentTarget);
         if (!data.get('identity') || !data.get('password')) { setError('Username dan password wajib diisi.'); return; }
         setError('');
-        if (role === 'Anggota') router.visit('/anggota');
-        else if (role === 'Petugas Sampah') router.visit('/petugas');
-        else router.visit('/pengurus');
+        setProcessing(true);
+        try {
+            const user = await login(data.get('identity'), data.get('password'));
+            setUser(user);
+            navigate(HOME_BY_ROLE[user?.role] || '/login');
+        } catch (err) {
+            // Kalau ada token lama menempel, bersihkan supaya state konsisten
+            await logout().catch(() => {});
+            setError(err.message || 'Login gagal.');
+        } finally {
+            setProcessing(false);
+        }
     }
 
     return (
@@ -42,16 +55,7 @@ function LoginCard() {
                 </div>
             </header>
 
-            {/* Role tabs */}
-            <div className="mt-6 flex rounded-2xl bg-accent p-1" role="tablist" aria-label="Pilih jenis akun">
-                {roles.map(item => (
-                    <button key={item} type="button" role="tab" aria-selected={role === item}
-                        onClick={() => setRole(item)}
-                        className={`min-h-10 flex-1 rounded-xl px-2 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary md:text-sm ${role === item ? 'bg-card font-semibold text-primary shadow-sm' : 'text-accent-foreground'}`}>
-                        {item}
-                    </button>
-                ))}
-            </div>
+            {/* Role tabs dihapus: role ditentukan backend dari akun yang login */}
 
             <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit}>
                 {/* Identity */}
@@ -89,9 +93,9 @@ function LoginCard() {
 
                 {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
-                <button type="submit"
-                    className="flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-base font-semibold text-white shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5">
-                    Masuk <LogIn size={18} />
+                <button type="submit" disabled={processing}
+                    className="flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-base font-semibold text-white shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5 disabled:opacity-60">
+                    {processing ? 'Memproses...' : 'Masuk'} {!processing && <LogIn size={18} />}
                 </button>
             </form>
 

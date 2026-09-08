@@ -8,7 +8,7 @@ export default function VerifyEmail({ status }) {
     const submit = (e) => {
         e.preventDefault();
 
-        post('/api/email/verification-notification');
+        post('/auth/email/verification-notification');
     };
 
     return (
@@ -36,7 +36,7 @@ export default function VerifyEmail({ status }) {
                     </PrimaryButton>
 
                     <Link
-                        href="/api/logout"
+                        href="/auth/logout"
                         method="post"
                         as="button"
                         className="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"

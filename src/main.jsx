@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { AuthProvider } from './lib/auth'
 import './app.css'
 import Login from './Pages/Login'
 import Pengurus from './Pages/Pengurus/Index'
@@ -18,7 +19,8 @@ import ProfileEdit from './Pages/Profile/Edit'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/pengurus/*" element={<Pengurus />} />
@@ -34,6 +36,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/profile" element={<ProfileEdit />} />
       </Routes>
-    </BrowserRouter>
+      </BrowserRouter>
+    </AuthProvider>
   </StrictMode>,
 )

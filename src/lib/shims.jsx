@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { api } from './api';
+import { useAuth, logout } from './auth';
 
 const APP_NAME = 'Koperasi Jasa Mulyo Raharjo Lestari';
 
@@ -15,8 +16,6 @@ export function Head({ title }) {
 }
 
 // Link Inertia: href + method opsional. GET → react-router, selain itu → API.
-// ponytail: hard-code navigate('/login') setelah logout; config per-Link kalau
-// ada aksi non-GET lain yang butuh redirect berbeda.
 export function Link({ href, method = 'get', as, ...props }) {
     const navigate = useNavigate();
     if (method.toLowerCase() === 'get') {
@@ -27,19 +26,23 @@ export function Link({ href, method = 'get', as, ...props }) {
             type="button"
             onClick={async () => {
                 await api(href, { method: method.toUpperCase() }).catch(() => {});
-                if (href.includes('logout')) navigate('/login');
+                if (href.includes('logout')) {
+                    await logout();
+                    navigate('/login');
+                }
             }}
             {...props}
         />
     );
 }
 
-// ponytail: reload penuh; ganti useNavigate di komponen kalau butuh transisi SPA.
+// ponytail: reload penuh; dipakai halaman Breeze yang belum di-migrate.
 export const router = { visit: (url) => { window.location.href = url; } };
 
-// ponytail: user statis null sampai endpoint /api/user ada di backend.
+// User dari AuthProvider (Bearer token) — menggantikan page.props Inertia.
 export function usePage() {
-    return { props: { auth: { user: null } } };
+    const { user } = useAuth();
+    return { props: { auth: { user } } };
 }
 
 export function useForm(initialData = {}) {

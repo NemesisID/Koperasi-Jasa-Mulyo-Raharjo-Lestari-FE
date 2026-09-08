@@ -12,7 +12,7 @@ export default function ForgotPassword({ status }) {
     const submit = (e) => {
         e.preventDefault();
 
-        post('/api/forgot-password');
+        post('/auth/forgot-password');
     };
 
     return (

@@ -13,7 +13,7 @@ export default function ConfirmPassword() {
     const submit = (e) => {
         e.preventDefault();
 
-        post('/api/password/confirm', {
+        post('/auth/confirm-password', {
             onFinish: () => reset('password'),
         });
     };

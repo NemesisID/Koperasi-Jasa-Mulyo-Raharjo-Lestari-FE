@@ -1,11 +1,13 @@
 import { useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
+import { useAuth } from '@/lib/auth';
 import {
-    CalendarDays, Check, ChevronRight, Clock3,
-    Download, MapPin, Recycle, TrendingUp, Truck
+    CalendarDays, Check, ChevronRight, Clock3, MapPin
 } from 'lucide-react';
 import { OfficerShell } from '@/Components/Koperasi/OfficerShell';
 import { StatusPopup } from '@/Components/Koperasi/Popups';
+import { useApi, rp, dfmt } from '@/lib/api';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
@@ -14,7 +16,7 @@ function Progress({ value, green = false }) {
         <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
             <div
                 className={cn('h-full rounded-full transition-all duration-300', green ? 'bg-emerald-600' : 'bg-primary')}
-                style={{ width: `${value}%` }}
+                style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
             />
         </div>
     );
@@ -35,24 +37,29 @@ function Stat({ label, value, children, featured = false }) {
     );
 }
 
+const STATUS_STYLE = {
+    menunggu: 'bg-amber-100 text-amber-800',
+    selesai: 'bg-emerald-100 text-emerald-700',
+    batal: 'bg-rose-100 text-rose-700',
+};
+
 // ─── 1. Dashboard Sub-page ────────────────────────────────────
 function DashboardPage() {
-    const activities = [
-        ['Jl. Merdeka No. 45', 'Organik: 5kg, Anorganik: 12kg', '10:30 AM', true],
-        ['Komp. Griya Hijau Blok B2', 'Menunggu penjemputan', '11:15 AM', false],
-        ['Jl. Sudirman 88', 'Menunggu penjemputan', '12:00 PM', false],
-    ];
+    const { data, loading, error } = useApi('/pickups?per_page=10');
+    const rows = data ?? [];
+    const done = rows.filter(p => p.status === 'selesai').length;
+    const gross = rows.reduce((s, p) => s + Number(p.total_gross ?? 0), 0);
 
     return (
         <div className="mx-auto max-w-5xl flex flex-col gap-6">
             <div className="grid gap-5 md:grid-cols-3">
                 <div className="md:col-span-2">
-                    <Stat label="TOTAL SAMPAH TERKUMPUL" value="125.5 kg">
-                        <p className="text-xs font-semibold text-emerald-700">↗ +12% dari kemarin</p>
+                    <Stat label="TOTAL SAMPAH TERKUMPUL" value={`${Number(gross).toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg`}>
+                        <p className="text-xs font-semibold text-muted-foreground">Dari {rows.length} tiket penjemputan terakhir</p>
                     </Stat>
                 </div>
-                <Stat label="JEMPUTAN SELESAI" value="18 / 24">
-                    <Progress value={75} />
+                <Stat label="PENJEMPUAN SELESAI" value={`${done} / ${rows.length}`}>
+                    <Progress value={rows.length ? (done / rows.length) * 100 : 0} />
                 </Stat>
             </div>
 
@@ -61,26 +68,32 @@ function DashboardPage() {
                     <h2 className="text-lg font-bold text-foreground">Aktivitas Terbaru</h2>
                 </div>
                 <div className="divide-y divide-border/60">
-                    {activities.map(([place, note, time, done]) => (
-                        <div key={place} className="flex items-center gap-4 px-6 py-4 hover:bg-secondary/30 transition-colors">
+                    {loading && (
+                        <div className="px-6 py-8 text-center text-sm text-muted-foreground">Memuat data…</div>
+                    )}
+                    {!loading && rows.length === 0 && (
+                        <div className="px-6 py-8 text-center text-sm text-muted-foreground">
+                            {error ? 'Gagal memuat data.' : 'Belum ada penjemputan.'}
+                        </div>
+                    )}
+                    {rows.map(p => (
+                        <div key={p.id} className="flex items-center gap-4 px-6 py-4 hover:bg-secondary/30 transition-colors">
                             <span className={cn(
                                 'flex size-10 shrink-0 items-center justify-center rounded-full',
-                                done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-muted-foreground'
+                                p.status === 'selesai' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-muted-foreground'
                             )}>
-                                {done ? <Check size={18} /> : <Clock3 size={18} />}
+                                {p.status === 'selesai' ? <Check size={18} /> : <Clock3 size={18} />}
                             </span>
                             <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-foreground">{place}</p>
-                                <p className="text-xs text-muted-foreground">{note}</p>
+                                <p className="text-sm font-semibold text-foreground">{p.member?.name ?? `Tiket #${p.id}`}</p>
+                                <p className="text-xs text-muted-foreground">
+                                    {p.location_type === 'jemput_rumah' ? 'Jemput ke rumah' : 'Antar ke gudang'}
+                                    {p.notes ? ` — ${p.notes}` : ''}
+                                </p>
                             </div>
-                            <time className={cn('text-xs font-semibold', done ? 'text-muted-foreground' : 'text-primary')}>{time}</time>
+                            <time className="text-xs font-semibold text-muted-foreground">{dfmt(p.scheduled_at ?? p.created_at ?? null)}</time>
                         </div>
                     ))}
-                </div>
-                <div className="p-4 border-t border-border/60 bg-slate-50/50">
-                    <button className="flex h-10 w-full items-center justify-center rounded-xl border border-primary text-xs font-bold text-primary hover:bg-primary hover:text-white transition-all">
-                        Lihat Semua Jadwal
-                    </button>
                 </div>
             </section>
         </div>
@@ -88,187 +101,174 @@ function DashboardPage() {
 }
 
 // ─── 2. Pickup Sub-page ───────────────────────────────────────
-function PickupPage({ showStatus }) {
-    const [states, setStates] = useState([true, false, true]);
-    const pickups = [
-        ['Bpk. Budi Santoso', 'Jl. Mawar Merah No. 12, RT 03/RW 01, Kel. Melati', ['Organik', 'Anorganik']],
-        ['Ibu Siti Aminah', 'Jl. Kenanga Asri Blok B No. 4, Kel. Melati', ['Anorganik']],
-        ['Bpk. Tono Haryanto', 'Gang Kelinci No. 8, RT 01/RW 02, Kel. Melati', ['Organik']],
-    ];
-    const toggle = (i) => setStates(s => s.map((v, j) => j === i ? !v : v));
+function PickupPage() {
+    const [status, setStatus] = useState('menunggu');
+    const { data, loading, error } = useApi(`/pickups?status=${status}&per_page=25`);
+    const rows = data ?? [];
 
     return (
         <div className="mx-auto max-w-5xl flex flex-col gap-6">
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-foreground md:text-3xl">Daftar Jemputan Hari Ini</h1>
+                    <h1 className="text-2xl font-bold text-foreground md:text-3xl">Daftar Penjemputan</h1>
                     <p className="mt-1 text-sm text-muted-foreground">Tugas penjemputan sampah dari anggota koperasi.</p>
                 </div>
                 <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-4 py-2.5 text-primary shadow-xs">
                     <CalendarDays size={18} />
                     <div>
-                        <p className="text-[10px] uppercase font-bold text-muted-foreground">Tanggal Jemput</p>
-                        <strong className="text-xs font-bold text-foreground">24 October 2023</strong>
+                        <p className="text-[10px] uppercase font-bold text-muted-foreground">Status Filter</p>
+                        <select
+                            value={status}
+                            onChange={e => setStatus(e.target.value)}
+                            className="bg-transparent text-xs font-bold text-foreground outline-none"
+                        >
+                            <option value="menunggu">Menunggu</option>
+                            <option value="selesai">Selesai</option>
+                            <option value="batal">Batal</option>
+                        </select>
                     </div>
                 </div>
             </div>
 
             <div className="flex flex-col gap-4">
-                {pickups.map(([name, address, tags], i) => (
-                    <article key={name} className="flex flex-col justify-between gap-5 rounded-2xl border border-border/80 bg-card p-6 shadow-xs sm:flex-row sm:items-center">
+                {loading && (
+                    <div className="rounded-2xl border border-border/80 bg-card px-6 py-8 text-center text-sm text-muted-foreground">Memuat data…</div>
+                )}
+                {!loading && rows.length === 0 && (
+                    <div className="rounded-2xl border border-border/80 bg-card px-6 py-8 text-center text-sm text-muted-foreground">
+                        {error ? 'Gagal memuat data.' : 'Tidak ada tiket dengan status ini.'}
+                    </div>
+                )}
+                {rows.map(p => (
+                    <article key={p.id} className="flex flex-col justify-between gap-5 rounded-2xl border border-border/80 bg-card p-6 shadow-xs sm:flex-row sm:items-center">
                         <div className="flex gap-4">
-                            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary text-white shadow-xs">
+                            <span className={cn(
+                                'flex size-12 shrink-0 items-center justify-center rounded-xl',
+                                p.status === 'selesai' ? 'bg-emerald-100 text-emerald-700' : 'bg-primary text-white'
+                            )}>
                                 <MapPin size={22} />
                             </span>
                             <div>
-                                <h3 className="text-base font-bold text-foreground">{name}</h3>
-                                <p className="mt-0.5 text-xs text-muted-foreground">{address}</p>
+                                <h3 className="text-base font-bold text-foreground">{p.member?.name ?? `Tiket #${p.id}`}</h3>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                    {p.member?.member_code ? `${p.member.member_code} · ` : ''}
+                                    Jadwal: {dfmt(p.scheduled_at)}
+                                    {p.completed_at ? ` · Selesai: ${dfmt(p.completed_at)}` : ''}
+                                </p>
                                 <div className="mt-2.5 flex gap-2">
-                                    {tags.map(tag => (
-                                        <span
-                                            key={tag}
-                                            className={cn(
-                                                'rounded-full px-3 py-0.5 text-xs font-semibold',
-                                                tag === 'Organik' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-primary'
-                                            )}
-                                        >
-                                            {tag}
+                                    <span className={cn('rounded-full px-3 py-0.5 text-xs font-semibold', STATUS_STYLE[p.status])}>
+                                        {p.status}
+                                    </span>
+                                    <span className={cn(
+                                        'rounded-full px-3 py-0.5 text-xs font-semibold',
+                                        p.is_sorted ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-primary'
+                                    )}>
+                                        {p.is_sorted ? 'Sudah Dipilah' : 'Belum Dipilah'}
+                                    </span>
+                                    {p.location_type && (
+                                        <span className="rounded-full bg-slate-100 px-3 py-0.5 text-xs font-semibold text-muted-foreground">
+                                            {p.location_type === 'jemput_rumah' ? 'Jemput Rumah' : 'Gudang'}
                                         </span>
-                                    ))}
+                                    )}
                                 </div>
                             </div>
                         </div>
 
                         <div className="rounded-xl border border-border bg-slate-50/70 p-4">
-                            <p className="mb-2 text-xs font-semibold text-muted-foreground">Status Pemilahan Sampah</p>
-                            <button
-                                type="button"
-                                role="switch"
-                                aria-checked={states[i]}
-                                onClick={() => toggle(i)}
-                                className="flex items-center gap-3"
-                            >
-                                <span className={cn(
-                                    'flex h-7 w-12 items-center rounded-full p-1 transition-all duration-200',
-                                    states[i] ? 'justify-end bg-primary' : 'justify-start bg-slate-300'
-                                )}>
-                                    <span className="size-5 rounded-full bg-white shadow-sm" />
-                                </span>
-                                <strong className={cn('text-xs font-bold', states[i] ? 'text-primary' : 'text-muted-foreground')}>
-                                    {states[i] ? 'Sudah Dipilah' : 'Belum Dipilah'}
-                                </strong>
-                            </button>
+                            <p className="mb-1 text-xs font-semibold text-muted-foreground">Total Timbang</p>
+                            <strong className="text-lg font-bold text-primary">{Number(p.total_gross ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg</strong>
+                            <p className="text-[11px] text-muted-foreground">Bersih anggota: {rp(p.total_net)}</p>
                         </div>
                     </article>
                 ))}
             </div>
-
-            <button
-                onClick={() => { setStates([true, true, true]); showStatus('Data Berhasil Disimpan', 'Semua status jemputan hari ini telah diperbarui.'); }}
-                className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-white shadow-md transition-all hover:bg-primary/90"
-            >
-                <Check size={18} />
-                <span>Selesaikan Jemputan Hari Ini</span>
-            </button>
         </div>
     );
 }
 
 // ─── 3. Report Sub-page ───────────────────────────────────────
-function ReportPage() {
-    const [downloaded, setDownloaded] = useState(false);
-    const categories = [
-        ['Organik', '520', '42', true],
-        ['Plastik', '315', '25', false],
-        ['Kertas/Kardus', '280', '22', false],
-        ['Logam & Kaca', '130', '11', false],
-    ];
+// ponytail: petugas tak punya akses /reports — rekap dihitung dari /pickups.
+function ReportPage({ showStatus }) {
+    const { data, loading, error } = useApi('/pickups?status=selesai&per_page=50');
+    const rows = data ?? [];
+    const totalKg = rows.reduce((s, p) => s + Number(p.total_gross ?? 0), 0);
+    const totalNet = rows.reduce((s, p) => s + Number(p.total_net ?? 0), 0);
+    const totalFee = rows.reduce((s, p) => s + Number(p.total_fee ?? 0), 0);
 
     const download = () => {
-        const url = URL.createObjectURL(new Blob(['Laporan Harian Petugas Sampah - 24 Oktober 2023\nTotal: 1,245 kg'], { type: 'text/plain' }));
-        const a = Object.assign(document.createElement('a'), { href: url, download: 'laporan-harian.txt' });
+        const lines = [
+            'Laporan Penjemputan Selesai',
+            `Total berat: ${totalKg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg`,
+            `Total bersih anggota: ${rp(totalNet)}`,
+            `Total fee koperasi: ${rp(totalFee)}`,
+            `Jumlah tiket: ${rows.length}`,
+            '',
+            ...rows.map(p => `#${p.id} ${p.member?.name ?? '-'} — ${Number(p.total_gross ?? 0)} kg / ${rp(p.total_net)}`),
+        ];
+        const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
+        const a = Object.assign(document.createElement('a'), { href: url, download: 'laporan-penjemputan.txt' });
         a.click();
         URL.revokeObjectURL(url);
-        setDownloaded(true);
+        showStatus('Laporan Berhasil Didownload', 'Rekap penjemputan selesai telah tersimpan di unduhan.');
     };
 
     return (
         <div className="mx-auto max-w-5xl flex flex-col gap-6">
             <section className="flex flex-col justify-between gap-4 rounded-2xl border border-border/80 bg-card p-6 shadow-xs sm:flex-row sm:items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-foreground md:text-3xl">Laporan Harian</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">Rekapitulasi pengumpulan sampah hari ini.</p>
+                    <h1 className="text-2xl font-bold text-foreground md:text-3xl">Laporan Penjemputan</h1>
+                    <p className="mt-1 text-sm text-muted-foreground">Rekapitulasi penjemputan berstatus selesai (50 terakhir).</p>
                 </div>
-                <div className="flex items-center gap-2 rounded-xl bg-[#eef3fc] px-4 py-2.5 text-xs font-bold text-primary">
-                    <CalendarDays size={16} /> 24 Oktober 2023
-                </div>
+                <button
+                    onClick={download}
+                    disabled={loading || rows.length === 0}
+                    className="flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-emerald-800 transition-all disabled:opacity-50"
+                >
+                    <ChevronRight size={14} /> Unduh Rekap
+                </button>
             </section>
 
             <div className="grid gap-5 md:grid-cols-3">
-                <Stat featured label="Total Hari Ini" value="1,245 kg">
-                    <p className="text-xs text-blue-200">↗ +12% dari kemarin</p>
+                <Stat featured label="Total Berat" value={`${totalKg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg`}>
+                    <p className="text-xs text-blue-200">{rows.length} tiket selesai</p>
                 </Stat>
-                <Stat label="Titik Jemput" value="32">
-                    <p className="text-xs font-semibold text-muted-foreground">Tersisa 4 titik</p>
+                <Stat label="Bersih Anggota" value={rp(totalNet)}>
+                    <p className="text-xs font-semibold text-muted-foreground">Total dikreditkan ke wallet anggota</p>
                 </Stat>
-                <Stat label="Target Harian" value="83%">
-                    <Progress value={83} />
+                <Stat label="Fee Koperasi" value={rp(totalFee)}>
+                    <Progress value={totalKg ? Math.min(100, (totalFee / Math.max(1, totalKg)) * 100) : 0} green />
                 </Stat>
             </div>
 
             <section className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
-                <div className="flex items-center justify-between p-5 border-b border-border/60">
-                    <h2 className="text-lg font-bold text-foreground">Rincian Per Kategori</h2>
-                    <button
-                        onClick={download}
-                        className="flex h-9 items-center gap-2 rounded-xl bg-emerald-700 px-4 text-xs font-semibold text-white shadow-xs hover:bg-emerald-800 transition-all"
-                    >
-                        <Download size={14} /> Unduh PDF
-                    </button>
+                <div className="p-5 border-b border-border/60">
+                    <h2 className="text-lg font-bold text-foreground">Rincian Penjemputan Selesai</h2>
                 </div>
-
                 <div className="overflow-x-auto">
                     <table className="w-full min-w-[640px] text-left text-sm">
                         <thead className="bg-[#eef3fc] text-xs font-bold uppercase tracking-wider text-slate-700">
                             <tr>
-                                <th className="px-6 py-3.5">Kategori</th>
-                                <th className="px-6 py-3.5">Berat (KG)</th>
-                                <th className="px-6 py-3.5">Kontribusi</th>
-                                <th className="px-6 py-3.5 text-center">Aksi</th>
+                                <th className="px-6 py-3.5">Tiket</th>
+                                <th className="px-6 py-3.5">Anggota</th>
+                                <th className="px-6 py-3.5">Selesai</th>
+                                <th className="px-6 py-3.5">Berat (kg)</th>
+                                <th className="px-6 py-3.5">Bersih Anggota</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
-                            {categories.map(([name, weight, percent, green]) => (
-                                <tr key={name} className="hover:bg-secondary/40 transition-colors">
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <span className={cn(
-                                                'flex size-9 items-center justify-center rounded-xl',
-                                                green ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-primary'
-                                            )}>
-                                                <Recycle size={18} />
-                                            </span>
-                                            <span className="font-semibold text-foreground">{name}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 font-bold text-foreground">{weight} kg</td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-32">
-                                                <Progress value={Number(percent)} green={green} />
-                                            </div>
-                                            <span className="text-xs font-bold text-muted-foreground">{percent}%</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-center">
-                                        <button
-                                            aria-label={`Detail ${name}`}
-                                            onClick={() => alert(`${name}: ${weight} kg`)}
-                                            className="text-muted-foreground hover:text-primary p-1"
-                                        >
-                                            <ChevronRight size={18} />
-                                        </button>
-                                    </td>
+                            {loading && (
+                                <tr><td colSpan={5} className="px-6 py-8 text-center text-sm text-muted-foreground">Memuat data…</td></tr>
+                            )}
+                            {!loading && rows.length === 0 && (
+                                <tr><td colSpan={5} className="px-6 py-8 text-center text-sm text-muted-foreground">{error ? 'Gagal memuat data.' : 'Belum ada penjemputan selesai.'}</td></tr>
+                            )}
+                            {rows.map(p => (
+                                <tr key={p.id} className="hover:bg-secondary/40 transition-colors">
+                                    <td className="px-6 py-4 font-mono text-xs text-muted-foreground">#{p.id}</td>
+                                    <td className="px-6 py-4 font-semibold text-foreground">{p.member?.name ?? '-'}</td>
+                                    <td className="px-6 py-4 text-muted-foreground">{dfmt(p.completed_at)}</td>
+                                    <td className="px-6 py-4 font-bold text-foreground">{Number(p.total_gross ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 1 })}</td>
+                                    <td className="px-6 py-4 font-bold text-primary">{rp(p.total_net)}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -277,36 +277,33 @@ function ReportPage() {
 
                 <div className="flex items-center justify-between border-t-2 border-primary bg-[#eef3fc] px-6 py-4">
                     <strong className="text-sm font-bold text-foreground">Total Keseluruhan</strong>
-                    <strong className="text-xl font-extrabold text-primary">1,245 kg</strong>
+                    <strong className="text-xl font-extrabold text-primary">{totalKg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg</strong>
                 </div>
             </section>
-
-            <StatusPopup
-                open={downloaded}
-                title="PDF Berhasil Didownload"
-                description="Dokumen rekapitulasi harian telah tersimpan di unduhan."
-                onClose={() => setDownloaded(false)}
-            />
         </div>
     );
 }
 
 // ─── Router Component ─────────────────────────────────────────
 function OfficerPages({ page, showStatus }) {
-    if (page === 'jemput-sampah') return <PickupPage showStatus={showStatus} />;
-    if (page === 'laporan') return <ReportPage />;
+    if (page === 'jemput-sampah') return <PickupPage />;
+    if (page === 'laporan') return <ReportPage showStatus={showStatus} />;
     return <DashboardPage />;
 }
 
 const officerPageTitles = {
     'dashboard': 'Dashboard Petugas',
     'jemput-sampah': 'Jemput Sampah',
-    'laporan': 'Laporan Harian Petugas',
+    'laporan': 'Laporan Penjemputan',
 };
 
 export default function PetugasIndex() {
+    const { user, ready } = useAuth();
     const [page, setPage] = useState('dashboard');
     const [status, setStatus] = useState('');
+
+    if (ready && !user) return <Navigate to="/" replace />;
+    if (!ready) return null;
 
     return (
         <>

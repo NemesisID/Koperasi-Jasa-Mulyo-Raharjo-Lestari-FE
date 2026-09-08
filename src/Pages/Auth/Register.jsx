@@ -16,7 +16,7 @@ export default function Register() {
     const submit = (e) => {
         e.preventDefault();
 
-        post('/api/register', {
+        post('/auth/register-member', {
             onFinish: () => reset('password', 'password_confirmation'),
         });
     };
