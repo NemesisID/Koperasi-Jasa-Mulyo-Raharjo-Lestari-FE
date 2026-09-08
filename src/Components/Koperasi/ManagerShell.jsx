@@ -16,6 +16,8 @@ export function ManagerShell({ children, currentPage, setPage }) {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [logoutOpen, setLogoutOpen] = useState(false);
     const [savingsOpen, setSavingsOpen] = useState(currentPage?.startsWith('simpanan'));
+    const { user, logout } = useAuth();
+    const displayName = user?.name || '(Nama)';
 
     const close = () => setMobileOpen(false);
     const nav = (page) => { setPage(page); close(); };
@@ -115,6 +117,12 @@ export function ManagerShell({ children, currentPage, setPage }) {
                 <button onClick={() => nav('pengeluaran')} className={navBtnCls(is('pengeluaran'))}>
                     <TrendingDown size={18} />
                     <span>Pengeluaran</span>
+                </button>
+
+                {/* Pengaduan */}
+                <button onClick={() => nav('pengaduan')} className={navBtnCls(is('pengaduan'))}>
+                    <MessageSquareWarning size={18} />
+                    <span>Pengaduan</span>
                 </button>
 
                 {/* Laporan */}

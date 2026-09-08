@@ -7,15 +7,7 @@ import Login from './Pages/Login'
 import Pengurus from './Pages/Pengurus/Index'
 import Anggota from './Pages/Anggota/Index'
 import Petugas from './Pages/Petugas/Index'
-import Welcome from './Pages/Welcome'
-import AuthLogin from './Pages/Auth/Login'
-import Register from './Pages/Auth/Register'
-import ForgotPassword from './Pages/Auth/ForgotPassword'
-import ResetPassword from './Pages/Auth/ResetPassword'
-import ConfirmPassword from './Pages/Auth/ConfirmPassword'
-import VerifyEmail from './Pages/Auth/VerifyEmail'
-import Dashboard from './Pages/Dashboard'
-import ProfileEdit from './Pages/Profile/Edit'
+import { AuthProvider, ProtectedRoute } from './lib/auth'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

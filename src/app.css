@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+/* ─── Design Tokens (Emerald / Navy / Slate) ──────────────────── */
+:root {
+    --background: #f8fafc;
+    --foreground: #0f172a;
+    --card: #ffffff;
+    --card-foreground: #0f172a;
+    --primary: #0a56c2;
+    --primary-foreground: #ffffff;
+    --secondary: #f3f6fc;
+    --secondary-foreground: #0f172a;
+    --muted: #f1f5f9;
+    --muted-foreground: #64748b;
+    --accent: #e8efff;
+    --accent-foreground: #0a56c2;
+    --success: #059669;
+    --destructive: #dc2626;
+    --border: #e2e8f0;
+    --input: #cbd5e1;
+    --ring: #0a56c2;
+}
+
+* {
+    border-color: var(--border);
+}
+
+body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Custom Scrollbar (sidebar & nav) ────────────────────────── */
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+}
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #94a3b8;
+}
+
+/* ─── Animations ─────────────────────────────────────────────── */
+@keyframes page-enter-keyframes {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+    animation: page-enter-keyframes 0.25s ease-out both;
+}
+
+@keyframes modal-backdrop-keyframes {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+.modal-backdrop-anim {
+    animation: modal-backdrop-keyframes 0.15s ease-out both;
+}
+
+@keyframes modal-content-keyframes {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.modal-content-anim {
+    animation: modal-content-keyframes 0.2s ease-out both;
+}
+
+/* Fallback minimal kelas tailwindcss-animate yang dipakai subnav sidebar */
+.animate-in {
+    animation: modal-content-keyframes 0.15s ease-out both;
+}
+.fade-in-50 {
+    animation: modal-backdrop-keyframes 0.15s ease-out both;
+}
