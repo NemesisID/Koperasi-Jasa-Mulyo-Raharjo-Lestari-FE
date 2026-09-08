@@ -4,7 +4,7 @@ import { useAuth, logout } from '@/lib/auth';
 import {
     Bell, ChevronDown, CircleHelp, FileBarChart, Leaf,
     LayoutGrid, LogOut, Menu, MessageSquareWarning, Settings,
-    TrendingDown, TrendingUp, UserRound, WalletCards, X,
+    TrendingDown, TrendingUp, Truck, UserRound, Users, WalletCards, X,
 } from 'lucide-react';
 import { ConfirmPopup } from './Popups';
 
@@ -60,10 +60,22 @@ export function ManagerShell({ children, currentPage, setPage }) {
                     <span>Dashboard</span>
                 </button>
 
+                {/* Manajemen User */}
+                <button onClick={() => nav('manajemen-user')} className={navBtnCls(is('manajemen-user'))}>
+                    <Users size={18} />
+                    <span>Manajemen User</span>
+                </button>
+
                 {/* Harga Sampah */}
                 <button onClick={() => nav('harga-sampah')} className={navBtnCls(is('harga-sampah'))}>
                     <Leaf size={18} />
                     <span>Harga Sampah</span>
+                </button>
+
+                {/* Monitoring Penjemputan */}
+                <button onClick={() => nav('penjemputan')} className={navBtnCls(is('penjemputan'))}>
+                    <Truck size={18} />
+                    <span>Penjemputan</span>
                 </button>
 
                 {/* Simpanan (Dropdown) */}

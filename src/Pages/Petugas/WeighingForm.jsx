@@ -3,7 +3,7 @@
 // (diantar ke gudang vs dijemput), dan kalkulator preview real-time 20%.
 import { useMemo, useState } from 'react';
 import {
-    CheckCircle2, Home, Package, Plus, Scale, Trash2, Warehouse,
+    CheckCircle2, Home, Package, Plus, Scale, Trash2,
 } from 'lucide-react';
 import ReceiptSuccessModal from '@/Components/Koperasi/ReceiptSuccessModal';
 import { calcWeighing } from '@/lib/weighing';
@@ -11,16 +11,17 @@ import { api, useApi, rp } from '@/lib/api';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
-export default function WeighingFormPage() {
+export default function WeighingFormPage({ initialMember = null, onBack = null }) {
     const { data: membersData, loading: loadingMembers } = useApi('/members?status=aktif&per_page=200');
     const { data: categoriesData, loading: loadingCats } = useApi('/trash-categories');
 
     const members = membersData ?? [];
     const categories = (categoriesData ?? []).filter(c => c.is_active !== false);
 
-    const [memberSearch, setMemberSearch] = useState('');
-    const [selectedMemberId, setSelectedMemberId] = useState('');
-    const [location, setLocation] = useState('gudang'); // 'gudang' | 'jemput_rumah'
+    const [memberSearch, setMemberSearch] = useState(initialMember ? `${initialMember.member_code} - ${initialMember.name}` : '');
+    const [selectedMemberId, setSelectedMemberId] = useState(initialMember?.id ?? '');
+    // Step 2 dari daftar pickup: lokasi otomatis jemput rumah; manual: default gudang.
+    const [location, setLocation] = useState(initialMember ? 'jemput_rumah' : 'gudang');
     const [isSorted, setIsSorted] = useState(true); // true = bersih/terpilah, false = kotor
     const [rows, setRows] = useState([{ categoryId: '', quantity: '' }]);
     const [receipt, setReceipt] = useState(null);
@@ -59,7 +60,7 @@ export default function WeighingFormPage() {
     };
 
     // Filtered members for dropdown/datalist
-    const matchedMember = members.find(m =>
+    const matchedMember = initialMember ?? members.find(m =>
         String(m.id) === String(selectedMemberId) ||
         m.name.toLowerCase() === memberSearch.trim().toLowerCase() ||
         m.member_code.toLowerCase() === memberSearch.trim().toLowerCase()
@@ -78,6 +79,7 @@ export default function WeighingFormPage() {
             setError('Pilih anggota koperasi yang valid dari daftar.');
             return;
         }
+
 
         const validRows = rows
             .map(r => ({
@@ -146,7 +148,11 @@ export default function WeighingFormPage() {
                 net: weighRes.data?.net_earned ?? net,
             });
 
-            // Reset form
+            // Reset form (aliran step-2: kembali ke daftar pickup setelah timbangan tersimpan)
+            if (onBack) {
+                onBack();
+                return;
+            }
             setMemberSearch('');
             setSelectedMemberId('');
             setRows([{ categoryId: defaultCatId, quantity: '' }]);
@@ -162,9 +168,54 @@ export default function WeighingFormPage() {
     return (
         <div className="mx-auto max-w-5xl flex flex-col gap-6">
             {/* Header */}
-            <div>
-                <h1 className="text-2xl font-bold text-foreground md:text-3xl">Timbang Sampah</h1>
-                <p className="mt-1 text-sm text-muted-foreground">Input penimbangan setoran anggota — saldo masuk otomatis ke dompet anggota setelah disimpan.</p>
+            <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3">
+                    <div>
+                        <h1 className="text-2xl font-bold text-foreground md:text-3xl">Timbang Sampah</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">Input penimbangan setoran anggota — saldo masuk otomatis ke dompet anggota setelah disimpan.</p>
+                    </div>
+                    {onBack && (
+                        <button onClick={onBack}
+                            className="flex h-10 shrink-0 items-center gap-2 rounded-xl border border-border bg-card px-4 text-xs font-semibold text-foreground hover:bg-secondary">
+                            ← Kembali ke Daftar
+                        </button>
+                    )}
+                </div>
+
+                {/* Info detail anggota (step 2 dari daftar pickup) */}
+                {matchedMember && (
+                    <section className="rounded-2xl border border-blue-200 bg-[#eaf1fd] p-5">
+                        <h2 className="flex items-center gap-2 text-base font-bold text-foreground">
+                            <Scale size={18} className="text-primary" /> Data Anggota
+                        </h2>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <div>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Nama</p>
+                                <p className="mt-0.5 text-sm font-bold text-foreground">{matchedMember.name}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Kode Anggota</p>
+                                <p className="mt-0.5 font-mono text-sm font-bold text-primary">{matchedMember.member_code}</p>
+                            </div>
+                            <div className="sm:col-span-2">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Alamat</p>
+                                <p className="mt-0.5 flex items-start gap-1.5 text-sm font-medium text-foreground">
+                                    <Home size={14} className="mt-0.5 shrink-0 text-primary" />{matchedMember.address ?? '-'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Telepon</p>
+                                <p className="mt-0.5 text-sm font-medium text-foreground">{matchedMember.phone ?? '-'}</p>
+                            </div>
+                            <div className="sm:col-span-2 lg:col-span-3">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Lokasi Penimbangan</p>
+                                <p className="mt-0.5 text-sm font-semibold text-foreground">
+                                    {location === 'jemput_rumah' ? 'Dijemput di rumah anggota' : 'Diantar ke gudang'}
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+                )}
             </div>
 
             <form onSubmit={submit} className="flex flex-col gap-5">
@@ -175,69 +226,30 @@ export default function WeighingFormPage() {
                     </h2>
 
                     <div className="mt-4 flex flex-col gap-4">
-                        <div className="flex flex-col gap-1.5">
-                            <label htmlFor="member" className="text-xs font-semibold text-foreground/80">Nama / Kode Anggota</label>
-                            <input
-                                id="member"
-                                list="member-list"
-                                value={memberSearch}
-                                onChange={e => {
-                                    setMemberSearch(e.target.value);
-                                    const match = members.find(m => `${m.member_code} - ${m.name}` === e.target.value || m.name === e.target.value);
-                                    if (match) setSelectedMemberId(match.id);
-                                }}
-                                placeholder={loadingMembers ? 'Memuat data anggota…' : 'Ketik nama atau kode anggota...'}
-                                autoComplete="off"
-                                required
-                                className={inputCls}
-                            />
-                            <datalist id="member-list">
-                                {members.map(m => (
-                                    <option key={m.id} value={`${m.member_code} - ${m.name} (${m.address || 'Alamat -'})`} />
-                                ))}
-                            </datalist>
-                            {matchedMember && (
-                                <p className="text-xs font-semibold text-emerald-700">
-                                    Anggota terverifikasi: {matchedMember.name} · {matchedMember.phone || '-'}
-                                </p>
-                            )}
-                        </div>
-
-                        {/* Toggle lokasi & kebersihan */}
+                        {/* Toggle kebersihan (lokasi sudah ditentukan: manual = gudang, step-2 = jemput rumah) */}
                         <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="flex flex-col gap-1.5">
-                                <span className="text-xs font-semibold text-foreground/80">Lokasi Penimbangan</span>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <button
-                                        type="button"
-                                        role="radio"
-                                        aria-checked={location === 'gudang'}
-                                        onClick={() => setLocation('gudang')}
-                                        className={cn(
-                                            'flex items-center justify-center gap-2 rounded-xl border h-11 text-xs font-semibold transition-all',
-                                            location === 'gudang'
-                                                ? 'border-primary bg-primary text-white shadow-sm'
-                                                : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-primary'
-                                        )}
-                                    >
-                                        <Warehouse size={16} /> Diantar Gudang
-                                    </button>
-                                    <button
-                                        type="button"
-                                        role="radio"
-                                        aria-checked={location === 'jemput_rumah'}
-                                        onClick={() => setLocation('jemput_rumah')}
-                                        className={cn(
-                                            'flex items-center justify-center gap-2 rounded-xl border h-11 text-xs font-semibold transition-all',
-                                            location === 'jemput_rumah'
-                                                ? 'border-primary bg-primary text-white shadow-sm'
-                                                : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-primary'
-                                        )}
-                                    >
-                                        <Home size={16} /> Jemput Rumah
-                                    </button>
+                            {!initialMember && (
+                                <div className="flex flex-col gap-1.5">
+                                    <span className="text-xs font-semibold text-foreground/80">Cari Anggota</span>
+                                    <input
+                                        list="member-list"
+                                        value={memberSearch}
+                                        onChange={e => {
+                                            setMemberSearch(e.target.value);
+                                            const match = members.find(m => `${m.member_code} - ${m.name}` === e.target.value || m.name === e.target.value);
+                                            if (match) setSelectedMemberId(match.id);
+                                        }}
+                                        placeholder={loadingMembers ? 'Memuat data anggota…' : 'Ketik nama atau kode anggota...'}
+                                        autoComplete="off"
+                                        className={inputCls}
+                                    />
+                                    <datalist id="member-list">
+                                        {members.map(m => (
+                                            <option key={m.id} value={`${m.member_code} - ${m.name} (${m.address || 'Alamat -'})`} />
+                                        ))}
+                                    </datalist>
                                 </div>
-                            </div>
+                            )}
 
                             <div className="flex flex-col gap-1.5">
                                 <span className="text-xs font-semibold text-foreground/80">Kondisi Sampah</span>

@@ -10,6 +10,9 @@ import { ManagerShell } from '@/Components/Koperasi/ManagerShell';
 import { FormPopup, StatusPopup } from '@/Components/Koperasi/Popups';
 import { api, useApi, rp, dfmt } from '@/lib/api';
 import ComplaintsDeskPage from './ComplaintsDesk';
+import UsersPage from './Users';
+import WajibOverviewPage from './WajibOverview';
+import PickupMonitorPage from './PickupMonitor';
 
 // ─── Popup context ────────────────────────────────────────────
 const PopupCtx = createContext({ openForm: () => {}, showStatus: () => {} });
@@ -277,6 +280,14 @@ function WastePriceCard({ item, onEdit }) {
                     <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700/70">Harga Kotor</p>
                     <strong className="mt-0.5 block text-sm font-extrabold text-emerald-700">{rp(item.price_unsorted)}</strong>
                 </div>
+                <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700/70">Harga Jual</p>
+                    <strong className="mt-0.5 block text-sm font-extrabold text-amber-700">{rp(item.price_sell)}</strong>
+                </div>
+                <div className="rounded-xl bg-purple-50 px-3 py-2.5 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-purple-700/70">Harga Anggota</p>
+                    <strong className="mt-0.5 block text-sm font-extrabold text-purple-700">{rp(item.price_member)}</strong>
+                </div>
             </div>
 
             <button
@@ -290,7 +301,12 @@ function WastePriceCard({ item, onEdit }) {
 }
 
 function PriceEditForm({ item, onDone, onCancel }) {
-    const [form, setForm] = useState({ price_sorted: item.price_sorted, price_unsorted: item.price_unsorted, notes: '' });
+    const [form, setForm] = useState({
+        price_sorted: item.price_sorted,
+        price_unsorted: item.price_unsorted,
+        price_sell: item.price_sell ?? 0,
+        notes: '',
+    });
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
 
@@ -303,6 +319,7 @@ function PriceEditForm({ item, onDone, onCancel }) {
                 body: {
                     price_sorted: Number(form.price_sorted),
                     price_unsorted: Number(form.price_unsorted),
+                    price_sell: Number(form.price_sell),
                     notes: form.notes || null,
                 },
             });
@@ -315,6 +332,8 @@ function PriceEditForm({ item, onDone, onCancel }) {
     }
 
     const inputCls = 'h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15';
+
+    const memberPrice = Math.round(Number(form.price_sell || 0) * 0.8);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-xs p-4" onClick={onCancel}>
@@ -336,6 +355,15 @@ function PriceEditForm({ item, onDone, onCancel }) {
                         <input type="number" min="0" required value={form.price_unsorted}
                             onChange={e => setForm(f => ({ ...f, price_unsorted: e.target.value }))} className={inputCls} />
                     </label>
+                    <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">
+                        Harga Jual / {item.unit} (Rp) — harga ke pengepul/marketplace
+                        <input type="number" min="0" required value={form.price_sell}
+                            onChange={e => setForm(f => ({ ...f, price_sell: e.target.value }))} className={inputCls} />
+                    </label>
+                    <div className="rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 flex items-center justify-between">
+                        <span className="text-xs font-semibold text-purple-700">Harga Anggota (otomatis, jual − 20%)</span>
+                        <strong className="text-sm font-extrabold text-purple-700">{rp(memberPrice)}</strong>
+                    </div>
                     <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">
                         Catatan (opsional)
                         <input type="text" maxLength={255} value={form.notes}
@@ -993,7 +1021,11 @@ function ManagerPages({ page, setPage }) {
         case 'simpanan-pokok':
             return <SavingsByLabelPage label="POKOK" />;
         case 'simpanan-wajib':
-            return <SavingsByLabelPage label="WAJIB" />;
+            return <WajibOverviewPage />;
+        case 'penjemputan':
+            return <PickupMonitorPage />;
+        case 'manajemen-user':
+            return <UsersPage showStatus={showStatus} />;
         case 'simpanan-sukarela':
             return <SavingsByLabelPage label="SUKARELA" />;
         case 'shu':
@@ -1026,6 +1058,8 @@ const pageTitles = {
     'shu': 'Sisa Hasil Usaha (SHU)',
     'pendapatan': 'Manajemen Pendapatan',
     'pengeluaran': 'Manajemen Pengeluaran',
+    'penjemputan': 'Monitoring Pengambilan Sampah',
+    'manajemen-user': 'Manajemen Pengguna',
     'pengaduan': 'Helpdesk Pengaduan',
     'laporan': 'Pusat Laporan',
     'laporan-laba-rugi': 'Laporan Laba Rugi (P&L)',

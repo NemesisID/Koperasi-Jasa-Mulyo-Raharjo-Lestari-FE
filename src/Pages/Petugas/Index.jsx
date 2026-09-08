@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import { useAuth } from '@/lib/auth';
 import {
-    CalendarDays, Check, ChevronRight, Clock3, MapPin
+    CalendarDays, Check, ChevronRight, Clock3, MapPin, Scale
 } from 'lucide-react';
 import { OfficerShell } from '@/Components/Koperasi/OfficerShell';
 import { StatusPopup } from '@/Components/Koperasi/Popups';
@@ -104,8 +104,15 @@ function DashboardPage() {
 // ─── 2. Pickup Sub-page ───────────────────────────────────────
 function PickupPage() {
     const [status, setStatus] = useState('menunggu');
-    const { data, loading, error } = useApi(`/pickups?status=${status}&per_page=25`);
+    const { data, loading, error, reload } = useApi(`/pickups?status=${status}&per_page=25`);
     const rows = data ?? [];
+
+    // Step 2: klik aksi → buka tampilan timbangan dengan info detail anggota.
+    const [weighingMember, setWeighingMember] = useState(null);
+
+    if (weighingMember) {
+        return <WeighingFormPage initialMember={weighingMember} onBack={() => { setWeighingMember(null); reload(); }} />;
+    }
 
     return (
         <div className="mx-auto max-w-5xl flex flex-col gap-6">
@@ -175,10 +182,20 @@ function PickupPage() {
                             </div>
                         </div>
 
-                        <div className="rounded-xl border border-border bg-slate-50/70 p-4">
-                            <p className="mb-1 text-xs font-semibold text-muted-foreground">Total Timbang</p>
-                            <strong className="text-lg font-bold text-primary">{Number(p.total_gross ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg</strong>
-                            <p className="text-[11px] text-muted-foreground">Bersih anggota: {rp(p.total_net)}</p>
+                        <div className="flex flex-col items-end gap-3">
+                            <div className="rounded-xl border border-border bg-slate-50/70 p-4">
+                                <p className="mb-1 text-xs font-semibold text-muted-foreground">Total Timbang</p>
+                                <strong className="text-lg font-bold text-primary">{Number(p.total_gross ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg</strong>
+                                <p className="text-[11px] text-muted-foreground">Bersih anggota: {rp(p.total_net)}</p>
+                            </div>
+                            {p.status === 'menunggu' && p.member && (
+                                <button
+                                    onClick={() => setWeighingMember(p.member)}
+                                    className="flex h-11 items-center gap-2 rounded-xl bg-primary px-5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
+                                >
+                                    <Scale size={16} /> Timbang Sekarang
+                                </button>
+                            )}
                         </div>
                     </article>
                 ))}

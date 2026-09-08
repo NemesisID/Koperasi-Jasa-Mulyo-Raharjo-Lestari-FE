@@ -154,9 +154,18 @@ export function FormPopup({ kind, onClose, onSuccess }) {
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
     const [showPw, setShowPw] = useState(false);
+    const [incomeCats, setIncomeCats] = useState(null);
     const { user } = useAuth();
     if (!kind || !configs[kind]) return null;
     const { title, icon: Icon, tone, submit, submitCls, bg } = configs[kind];
+
+    // Kategori pemasukan dimuat sekali untuk dropdown labeling cashflow (termasuk Penjualan Sampah).
+    if (kind === 'income' && incomeCats === null) {
+        setIncomeCats(undefined);
+        api('/finance-categories?type=income')
+            .then(json => setIncomeCats(json?.data ?? []))
+            .catch(() => setIncomeCats([]));
+    }
 
     // ponytail: member_id diketik manual — ganti search-select member kalau sering dipakai.
     const handleSubmit = async (e) => {
@@ -167,12 +176,10 @@ export function FormPopup({ kind, onClose, onSuccess }) {
         try {
             let res;
             if (kind === 'income') {
-                const cats = (await api('/finance-categories?type=income')).data;
-                const cat = cats.find(c => c.name === fd.get('source')) ?? cats[0];
                 res = await api('/transactions', {
                     method: 'POST',
                     body: {
-                        category_id: cat?.id,
+                        category_id: Number(fd.get('category_id')) || null,
                         type: 'income',
                         amount: Number(String(fd.get('amount')).replace(/[^\d]/g, '')),
                         description: fd.get('note') || null,
@@ -266,7 +273,18 @@ export function FormPopup({ kind, onClose, onSuccess }) {
             <form onSubmit={handleSubmit} className="flex flex-col gap-4 p-6 bg-card">
                 {kind === 'income' && (
                     <>
-                        <Field name="source" label="Sumber Dana" placeholder="Contoh: Penjualan Pupuk" />
+                        <div className="flex flex-col gap-1.5">
+                            <label htmlFor="income-category" className="text-xs font-semibold text-foreground/80">Kategori Pemasukan</label>
+                            <select
+                                required
+                                id="income-category"
+                                name="category_id"
+                                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+                            >
+                                {incomeCats === undefined && <option value="">Memuat kategori…</option>}
+                                {(incomeCats ?? []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                        </div>
                         <MoneyField name="amount" label="Jumlah Nominal" />
                         <TextAreaField name="note" label="Keterangan" placeholder="Catatan tambahan..." />
                     </>
@@ -288,7 +306,10 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                         </div>
                         <TextAreaField name="address" label="Alamat" placeholder="Alamat lengkap domisili" rows={2} />
                         <div className="grid gap-3 sm:grid-cols-2">
-                            <MoneyField name="principal" label="Simpanan Pokok (Rp)" defaultValue="50.000" />
+                            <div className="rounded-xl bg-[#eef3fc] px-4 py-3 flex items-center justify-between">
+                                <span className="text-xs font-semibold text-primary">Simpanan Pokok (otomatis)</span>
+                                <strong className="text-sm font-bold text-primary">Rp 50.000</strong>
+                            </div>
                             <div className="flex flex-col gap-1.5">
                                 <label htmlFor="password" className="text-xs font-semibold text-foreground/80">Password</label>
                                 <div className="relative">

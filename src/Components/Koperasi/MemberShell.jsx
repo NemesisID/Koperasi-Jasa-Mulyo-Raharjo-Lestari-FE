@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, logout } from '@/lib/auth';
 import {
-    Bell, ChevronDown, CircleHelp, FileBarChart,
+    Bell, ChevronDown, CircleHelp, FileBarChart, History,
     LayoutGrid, LogOut, Menu, Settings, UserRound, WalletCards, X,
 } from 'lucide-react';
 import { ConfirmPopup } from './Popups';
@@ -90,6 +90,12 @@ export function MemberShell({ children, currentPage, setPage }) {
                         </div>
                     )}
                 </div>
+
+                {/* Riwayat Pengambilan */}
+                <button onClick={() => nav('pengambilan-sampah')} className={navBtnCls(is('pengambilan-sampah'))}>
+                    <History size={18} />
+                    <span>Riwayat Pengambilan</span>
+                </button>
 
                 {/* Laporan */}
                 <button onClick={() => nav('laporan')} className={navBtnCls(startsWith('laporan'))}>

@@ -82,7 +82,7 @@ export default function PriceBoardPage() {
                                     {trend}
                                 </span>
                             </div>
-                            <div className="mt-4 grid grid-cols-2 gap-3">
+                            <div className="mt-4 grid grid-cols-3 gap-3">
                                 <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3 text-center">
                                     <p className="text-[10px] font-bold uppercase text-muted-foreground">Gudang (Bersih)</p>
                                     <strong className="mt-0.5 block text-base font-extrabold text-emerald-700">{rp(item.price_sorted)}</strong>
@@ -90,6 +90,10 @@ export default function PriceBoardPage() {
                                 <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3 text-center">
                                     <p className="text-[10px] font-bold uppercase text-muted-foreground">Dijemput</p>
                                     <strong className="mt-0.5 block text-base font-extrabold text-foreground">{rp(item.pickup_price)}</strong>
+                                </div>
+                                <div className="rounded-xl border border-primary/40 bg-[#eaf1fd] p-3 text-center">
+                                    <p className="text-[10px] font-bold uppercase text-primary">Harga Anggota</p>
+                                    <strong className="mt-0.5 block text-base font-extrabold text-primary">{rp(item.price_member)}</strong>
                                 </div>
                             </div>
                         </article>

@@ -66,11 +66,11 @@ function DashboardPage() {
                 </div>
             </section>
 
-            {/* 3 Metric Cards */}
+            {/* 3 Metric Cards — saldo dipisah sumber: sampah vs SHU */}
             <div className="grid gap-5 md:grid-cols-3">
-                <MetricCard icon={<WalletCards size={20} />} label="Saldo Wallet Saat Ini" value={rp(wallet?.current_balance)} note={`Total diterima: ${rp(wallet?.total_earned)}`} />
-                <MetricCard icon={<TrendingUp size={20} />} label="Total Diterima" value={rp(wallet?.total_earned)} note="Akumulasi setoran sampah" tone="green" />
-                <MetricCard icon={<TrendingDown size={20} />} label="Sudah Ditarik / Pending" value={rp(wallet?.total_withdrawn)} note={`Pending: ${rp(wallet?.pending_withdrawal)}`} tone="red" />
+                <MetricCard icon={<Leaf size={20} />} label="Saldo dari Sampah" value={rp(wallet?.balance_from_trash)} note="Hasil setoran sampah (net)" tone="green" />
+                <MetricCard icon={<Landmark size={20} />} label="Saldo dari SHU" value={rp(wallet?.balance_from_shu)} note="Dividen tahunan koperasi" tone="gold" />
+                <MetricCard icon={<WalletCards size={20} />} label="Total Saldo Saat Ini" value={rp(wallet?.current_balance)} note={`Sudah ditarik: ${rp(wallet?.total_withdrawn)} · Pending: ${rp(wallet?.pending_withdrawal)}`} />
             </div>
 
             {/* Riwayat Aktivitas Keuangan */}
@@ -190,6 +190,73 @@ function SukarelaPage() {
                             <Status key="s" kind={r.status === 'SELESAI' ? 'success' : 'waiting'}>{r.status}</Status>
                         ])}
                 footer={`Menampilkan ${rows.length} transaksi`}
+            />
+        </div>
+    );
+}
+
+// ─── 3. Riwayat Pengambilan Sampah Sub-page ────────────────────
+// Anggota melihat pickup miliknya (backend otomatis filter own) + tombol
+// request jemput ulang di hari yang sama untuk pickup yang sudah selesai.
+function PickupHistoryPage() {
+    const { user } = useAuth();
+    const { data, loading, error } = useApi('/pickups?per_page=50');
+    const [reqState, setReqState] = useState('');
+    const rows = data ?? [];
+
+    const isSameDay = (iso) => {
+        if (!iso) return false;
+        const d = new Date(iso);
+        const now = new Date();
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    };
+
+    const requestAgain = async (p) => {
+        const reason = prompt('Alasan permintaan jemput ulang (contoh: ada hajatan, sampah menumpuk):');
+        if (!reason) return;
+        setReqState(p.id);
+        try {
+            await api('/pickups', {
+                method: 'POST',
+                body: {
+                    member_id: user?.member?.id,
+                    location_type: 'jemput_rumah',
+                    is_sorted: p.is_sorted,
+                    notes: `Request jemput ulang hari yang sama — ${reason}`,
+                },
+            });
+            alert('Permintaan jemput ulang berhasil dikirim ke petugas.');
+        } catch (err) {
+            alert(err.message || 'Gagal mengirim permintaan.');
+        } finally { setReqState(''); }
+    };
+
+    return (
+        <div className="flex flex-col gap-6">
+            <PageTitle
+                title="Riwayat Pengambilan Sampah"
+                description="Riwayat sampah Anda yang diambil petugas. Jika ada sampah baru menumpuk di hari yang sama, ajukan jemput ulang."
+            />
+            <DataPanel
+                title="Riwayat Pengambilan"
+                headers={['Tanggal', 'Lokasi', 'Status', 'Anda Terima', 'Aksi']}
+                rows={loading
+                    ? [[<span key="l" className="text-muted-foreground">Memuat data…</span>, '', '', '', '']]
+                    : rows.length === 0
+                        ? [[<span key="e" className="text-muted-foreground">{error ? 'Gagal memuat data.' : 'Belum ada pengambilan sampah.'}</span>, '', '', '', '']]
+                        : rows.map(p => [
+                            <span key="d" className="text-muted-foreground">{dfmt(p.completed_at ?? p.scheduled_at)}</span>,
+                            <span key="loc" className="font-semibold">{p.location_type === 'jemput_rumah' ? 'Jemput Rumah' : 'Antar Gudang'}</span>,
+                            <Status key="s" kind={p.status === 'selesai' ? 'success' : p.status === 'batal' ? 'danger' : 'waiting'}>{p.status}</Status>,
+                            <strong key="net" className={cn('font-bold', Number(p.total_net) > 0 ? 'text-emerald-700' : 'text-muted-foreground')}>{Number(p.total_net) > 0 ? rp(p.total_net) : '-'}</strong>,
+                            p.status === 'selesai' && isSameDay(p.completed_at ?? p.scheduled_at)
+                                ? <button key="a" onClick={() => requestAgain(p)} disabled={reqState === p.id}
+                                    className="h-8 rounded-xl bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50">
+                                    {reqState === p.id ? 'Mengirim…' : 'Jemput Ulang'}
+                                </button>
+                                : <span key="a" className="text-xs text-muted-foreground">-</span>
+                        ])}
+                footer={`Menampilkan ${rows.length} pengambilan`}
             />
         </div>
     );
@@ -322,6 +389,8 @@ function MemberPages({ page, setPage, openForm }) {
             return <WajibPage openForm={openForm} />;
         case 'simpanan-sukarela':
             return <SukarelaPage />;
+        case 'pengambilan-sampah':
+            return <PickupHistoryPage />;
         case 'laporan':
             return <ReportsPage setPage={setPage} />;
         case 'laporan-shu':
@@ -337,6 +406,7 @@ const memberPageTitles = {
     'dashboard': 'Dashboard Anggota',
     'simpanan-wajib': 'Simpanan Wajib Anggota',
     'simpanan-sukarela': 'Simpanan Sukarela Anggota',
+    'pengambilan-sampah': 'Riwayat Pengambilan Sampah',
     'laporan': 'Pusat Laporan Anggota',
     'laporan-shu': 'Laporan SHU Anggota',
     'laporan-saldo': 'Laporan Saldo Sampah',
