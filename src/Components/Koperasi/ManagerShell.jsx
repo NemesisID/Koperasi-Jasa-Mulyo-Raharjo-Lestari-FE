@@ -16,7 +16,6 @@ export function ManagerShell({ children, currentPage, setPage }) {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [logoutOpen, setLogoutOpen] = useState(false);
     const [savingsOpen, setSavingsOpen] = useState(currentPage?.startsWith('simpanan'));
-    const { user, logout } = useAuth();
     const displayName = user?.name || '(Nama)';
 
     const close = () => setMobileOpen(false);
