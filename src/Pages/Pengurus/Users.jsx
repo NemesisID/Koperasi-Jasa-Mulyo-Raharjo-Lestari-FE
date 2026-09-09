@@ -21,15 +21,29 @@ function UserForm({ user, onDone, onCancel }) {
     const [form, setForm] = useState({
         name: user?.name ?? '', username: user?.username ?? '', email: user?.email ?? '',
         password: '', role: user?.role ?? 'petugas', phone: user?.phone ?? '', address: user?.address ?? '',
+        member_id: user?.member?.id ?? '',
     });
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
+
+    // Daftar anggota hanya diambil saat role akun adalah anggota.
+    const { data: members } = useApi(form.role === 'anggota' ? '/members?status=aktif&per_page=200' : null);
+    const memberList = members ?? [];
+    // Saat edit, pastikan member saat ini tetap tampil walau tidak aktif / tidak ada di daftar.
+    const memberOptions = user?.member && !memberList.some(m => String(m.id) === String(user.member.id))
+        ? [user.member, ...memberList]
+        : memberList;
 
     const submit = async (e) => {
         e.preventDefault();
         setSaving(true); setError('');
         try {
-            const body = { ...form, password: form.password || undefined };
+            const { member_id, ...rest } = form;
+            const body = {
+                ...rest,
+                password: form.password || undefined,
+                member_id: form.role === 'anggota' ? (Number(member_id) || undefined) : undefined,
+            };
             const res = isEdit
                 ? await api(`/users/${user.id}`, { method: 'PUT', body })
                 : await api('/users', { method: 'POST', body });
@@ -63,6 +77,19 @@ function UserForm({ user, onDone, onCancel }) {
                             <option value="anggota">Anggota</option>
                         </select>
                     </label>
+                    {form.role === 'anggota' && (
+                        <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Anggota Terhubung
+                            <select required value={form.member_id} onChange={e => setForm(f => ({ ...f, member_id: e.target.value }))}
+                                className={inputCls}>
+                                <option value="">Pilih anggota…</option>
+                                {memberOptions.map(m => (
+                                    <option key={m.id} value={m.id}>
+                                        {m.member_code} — {m.name}{m.address ? ` (${m.address})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                    )}
                     <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Username
                         <input required value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} className={inputCls} />
                     </label>
