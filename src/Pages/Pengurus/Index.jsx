@@ -16,7 +16,7 @@ import PickupMonitorPage from './PickupMonitor';
 
 // ─── Popup context ────────────────────────────────────────────
 const PopupCtx = createContext({ openForm: () => {}, showStatus: () => {} });
-const usePopup = () => useContext(PopupCtx);
+export const usePopup = () => useContext(PopupCtx);
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
@@ -36,19 +36,19 @@ function PageHeader({ title, desc, action }) {
 function StatCard({ label, value, note, tone = 'blue', indicator = 'top' }) {
     const toneStyles = {
         blue: {
-            border: indicator === 'top' ? 'border-t-4 border-t-primary' : 'border-l-4 border-l-primary',
+            border: indicator === 'top' ? 'border-t-2 border-t-primary' : 'border-l-2 border-l-primary',
             note: 'text-primary',
         },
         green: {
-            border: indicator === 'top' ? 'border-t-4 border-t-emerald-600' : 'border-l-4 border-l-emerald-600',
+            border: indicator === 'top' ? 'border-t-2 border-t-emerald-600' : 'border-l-2 border-l-emerald-600',
             note: 'text-emerald-700 font-medium',
         },
         red: {
-            border: indicator === 'top' ? 'border-t-4 border-t-rose-600' : 'border-l-4 border-l-rose-600',
+            border: indicator === 'top' ? 'border-t-2 border-t-rose-600' : 'border-l-2 border-l-rose-600',
             note: 'text-rose-600 font-medium',
         },
         gold: {
-            border: indicator === 'top' ? 'border-t-4 border-t-amber-600' : 'border-l-4 border-l-amber-600',
+            border: indicator === 'top' ? 'border-t-2 border-t-amber-600' : 'border-l-2 border-l-amber-600',
             note: 'text-amber-700 font-medium',
         },
     };
