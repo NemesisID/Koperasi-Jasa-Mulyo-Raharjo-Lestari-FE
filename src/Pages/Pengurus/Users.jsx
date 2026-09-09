@@ -60,6 +60,7 @@ function UserForm({ user, onDone, onCancel }) {
                             <option value="petugas">Petugas</option>
                             <option value="pengurus">Pengurus</option>
                             <option value="ketua">Ketua</option>
+                            <option value="anggota">Anggota</option>
                         </select>
                     </label>
                     <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Username
