@@ -2,7 +2,7 @@
 // penanda fluktuasi naik/turun, info potongan harga jemput armada.
 // Auto-refresh tiap 60 detik agar harga tampil terkini (realtime).
 import { useEffect, useState } from 'react';
-import { Info, Recycle, TrendingDown, TrendingUp } from 'lucide-react';
+import { Recycle, TrendingDown, TrendingUp } from 'lucide-react';
 import { useApi, rp } from '@/lib/api';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
@@ -25,15 +25,6 @@ export default function PriceBoardPage() {
             <div>
                 <h1 className="text-2xl font-bold text-foreground md:text-3xl">Papan Harga Sampah</h1>
                 <p className="mt-1 text-sm text-muted-foreground">Harga terkini dari koperasi — dimuat ulang otomatis setiap menit.</p>
-            </div>
-
-            {/* Info potongan jemput */}
-            <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-[#eaf1fd] p-4 text-sm text-foreground">
-                <Info size={18} className="mt-0.5 shrink-0 text-primary" />
-                <p className="text-xs leading-relaxed">
-                    Setoran <strong>diantar sendiri ke gudang</strong> mendapat harga penuh. Jika <strong>dijemput armada</strong> di rumah/pasar,
-                    harga dipotong Rp300 untuk sampah non-logam dan Rp2.000 untuk logam sebagai biaya layanan angkut.
-                </p>
             </div>
 
             {/* Filter kategori */}
@@ -75,8 +66,8 @@ export default function PriceBoardPage() {
                                     <span className="flex size-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
                                         <Recycle size={20} />
                                     </span>
-                                    <div>
-                                        <h3 className="text-sm font-bold text-foreground">{item.name}</h3>
+                                    <div className="min-w-0">
+                                        <h3 className="text-sm font-bold break-words text-foreground">{item.name}</h3>
                                         <p className="text-xs capitalize text-muted-foreground">{item.type} · per {item.unit}</p>
                                     </div>
                                 </div>
@@ -88,19 +79,21 @@ export default function PriceBoardPage() {
                                     {trend}
                                 </span>
                             </div>
-                            {/* 3 nominal: bersih (otomatis 80% harga jual), kotor & jual manual pengurus */}
-                            <div className="mt-4 grid grid-cols-3 gap-3">
+                            {/* Harga bersih utama (yang diterima anggota) + 2 nominal pendamping */}
+                            <div className="mt-4 flex flex-col gap-3">
                                 <div className="rounded-xl border border-primary/40 bg-[#eaf1fd] p-3 text-center">
                                     <p className="text-[10px] font-bold uppercase text-primary">Harga Bersih</p>
-                                    <strong className="mt-0.5 block text-base font-extrabold text-primary">{rp(item.price_member)}</strong>
+                                    <strong className="mt-0.5 block text-base font-extrabold break-words text-primary">{rp(item.price_member)}</strong>
                                 </div>
-                                <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3 text-center">
-                                    <p className="text-[10px] font-bold uppercase text-muted-foreground">Harga Kotor</p>
-                                    <strong className="mt-0.5 block text-base font-extrabold text-foreground">{rp(item.price_unsorted)}</strong>
-                                </div>
-                                <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3 text-center">
-                                    <p className="text-[10px] font-bold uppercase text-muted-foreground">Harga Jual</p>
-                                    <strong className="mt-0.5 block text-base font-extrabold text-foreground">{rp(item.price_sell)}</strong>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3 text-center">
+                                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Harga Kotor</p>
+                                        <strong className="mt-0.5 block text-sm font-extrabold break-words text-foreground">{rp(item.price_unsorted)}</strong>
+                                    </div>
+                                    <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3 text-center">
+                                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Harga Jual</p>
+                                        <strong className="mt-0.5 block text-sm font-extrabold break-words text-foreground">{rp(item.price_sell)}</strong>
+                                    </div>
                                 </div>
                             </div>
                         </article>

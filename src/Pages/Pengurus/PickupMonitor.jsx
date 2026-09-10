@@ -20,7 +20,8 @@ function HistoryModal({ member, onClose }) {
     const totalNet = rows.reduce((s, p) => s + Number(p.total_net ?? 0), 0);
 
     return (
-        <Modal open onClose={onClose}>
+        // Tabel 5 kolom (min-w 520px) + padding → butuh lg (672px).
+        <Modal open onClose={onClose} size="lg">
             <div className="flex items-center justify-between bg-accent/60 px-6 py-4 border-b border-border/60">
                 <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
                     <Truck size={20} />

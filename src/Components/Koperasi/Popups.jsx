@@ -12,7 +12,11 @@ const cn = (...cls) => cls.filter(Boolean).join(' ');
 // ─── Native modal overlay with animation ──────────────────────
 // Selalu di tengah LAYAR (fixed + center), tinggi maksimal 90vh dengan scroll
 // internal supaya form panjang tetap terjangkau.
-export function Modal({ open, onClose, children }) {
+// size disesuaikan estimasi lebar isi: sm (popup kecil), md (form 1 kolom),
+// lg (form grid 2 kolom / tabel 4-5 kolom), xl (tabel lebar).
+const MODAL_SIZES = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-3xl' };
+
+export function Modal({ open, onClose, children, size = 'md' }) {
     if (!open) return null;
     return (
         <div
@@ -20,7 +24,7 @@ export function Modal({ open, onClose, children }) {
             onClick={onClose}
         >
             <div
-                className="modal-content-anim max-h-[90vh] w-full max-w-lg overflow-y-auto custom-scrollbar rounded-2xl border border-border bg-card shadow-2xl"
+                className={cn('modal-content-anim max-h-[90vh] w-full overflow-y-auto custom-scrollbar rounded-2xl border border-border bg-card shadow-2xl', MODAL_SIZES[size])}
                 onClick={e => e.stopPropagation()}
             >
                 {children}
@@ -312,7 +316,8 @@ export function FormPopup({ kind, onClose, onSuccess }) {
     };
 
     return (
-        <Modal open onClose={onClose}>
+        // Form anggota paling lebar (grid 2 kolom + alamat) → lg; sisanya cukup md.
+        <Modal open onClose={onClose} size={kind === 'member' ? 'lg' : 'md'}>
             <div className={cn('flex items-center justify-between px-6 py-4', bg)}>
                 <h2 className={cn('flex items-center gap-2.5 text-base font-bold', tone)}>
                     <Icon size={20} />
@@ -506,7 +511,7 @@ export function FormPopup({ kind, onClose, onSuccess }) {
 
 export function StatusPopup({ open, title, description = 'Perbarui laman untuk melihat data terbaru', onClose }) {
     return (
-        <Modal open={open} onClose={onClose}>
+        <Modal open={open} onClose={onClose} size="sm">
             <div className="flex flex-col items-center gap-3.5 px-6 py-8 text-center bg-card">
                 <div className="flex size-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 ring-8 ring-emerald-50">
                     <Save size={26} />
@@ -528,7 +533,7 @@ export function StatusPopup({ open, title, description = 'Perbarui laman untuk m
 
 export function ConfirmPopup({ open, title, description, actionLabel, tone = 'primary', icon = 'save', onCancel, onConfirm }) {
     return (
-        <Modal open={open} onClose={onCancel}>
+        <Modal open={open} onClose={onCancel} size="sm">
             <div className="flex flex-col items-center gap-3.5 px-6 py-8 text-center bg-card">
                 <div className={cn(
                     'flex size-14 items-center justify-center rounded-full',

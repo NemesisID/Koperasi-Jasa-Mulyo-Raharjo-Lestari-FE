@@ -67,7 +67,8 @@ function UserForm({ user, onDone, onCancel }) {
     };
 
     return (
-        <Modal open onClose={onCancel}>
+        // Form panjang: grid 2 kolom + alamat per kategori (bisa 2 tambahan) → lg.
+        <Modal open onClose={onCancel} size="lg">
             <div className="flex items-center justify-between bg-accent/60 px-6 py-4 border-b border-border/60">
                 <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
                     <UserPlus size={20} />
@@ -294,7 +295,8 @@ export default function UsersPage({ showStatus }) {
             )}
 
             {detail && (
-                <Modal open onClose={() => setDetail(null)}>
+                // Grid 2 kolom kartu detail + email/alamat panjang → lg.
+                <Modal open onClose={() => setDetail(null)} size="lg">
                     <div className="flex items-center justify-between bg-accent/60 px-6 py-4 border-b border-border/60">
                         <h2 className="flex items-center gap-2.5 text-base font-bold text-primary"><Users size={20} /><span>Detail Akun</span></h2>
                         <button type="button" onClick={() => setDetail(null)} className="rounded-lg p-1 text-muted-foreground hover:bg-black/5 hover:text-foreground"><X size={18} /></button>

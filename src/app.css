@@ -61,7 +61,10 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 .page-enter {
-    animation: page-enter-keyframes 0.25s ease-out both;
+    /* backwards (bukan both): setelah animasi selesai transform kembali none,
+       sehingga modal fixed di dalam main tetap relatif ke viewport.
+       Kalau both, transform menempel di main dan jadi containing block fixed. */
+    animation: page-enter-keyframes 0.25s ease-out backwards;
 }
 
 @keyframes modal-backdrop-keyframes {

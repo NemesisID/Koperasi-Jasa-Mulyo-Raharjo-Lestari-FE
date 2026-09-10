@@ -59,7 +59,8 @@ function CategoryFormModal({ category, onClose, onSaved }) {
     };
 
     return (
-        <Modal open onClose={onClose}>
+        // Form kategori: grid 2 kolom (jenis/satuan + harga) → lg.
+        <Modal open onClose={onClose} size="lg">
             <div className="flex items-center justify-between px-6 py-4 bg-accent/60 border-b border-border/60">
                 <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
                     <Tag size={20} />
@@ -125,7 +126,8 @@ function HistoryModal({ category, onClose }) {
     const { data, loading } = useApi(`/trash-categories/${category.id}/price-history`);
     const rows = data ?? [];
     return (
-        <Modal open onClose={onClose}>
+        // Tabel 4 kolom dengan nilai "lama → baru" (~640px) → lg.
+        <Modal open onClose={onClose} size="lg">
             <div className="flex items-center justify-between px-6 py-4 bg-accent/60 border-b border-border/60">
                 <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
                     <History size={20} />

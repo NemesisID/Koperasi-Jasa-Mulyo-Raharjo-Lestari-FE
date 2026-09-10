@@ -39,7 +39,8 @@ function WithdrawModal({ member, onClose, onDone }) {
     };
 
     return (
-        <Modal open onClose={onClose}>
+        // Grid 2 kolom info anggota + form → lg.
+        <Modal open onClose={onClose} size="lg">
             <div className="flex items-center justify-between px-6 py-4 bg-accent/60 border-b border-border/60">
                 <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
                     <Banknote size={20} />

@@ -49,7 +49,8 @@ function ActionModal({ complaint, onClose, onDone }) {
     const isResolved = complaint.status === 'diterima' || complaint.status === 'ditolak';
 
     return (
-        <Modal open onClose={onClose}>
+        // Grid 2 kolom identitas + box keluhan + tombol aksi → lg.
+        <Modal open onClose={onClose} size="lg">
             <div className="flex items-center justify-between px-6 py-4 bg-accent/60 border-b border-border/60">
                 <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
                     <MessageSquareWarning size={20} />

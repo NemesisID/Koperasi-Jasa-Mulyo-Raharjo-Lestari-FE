@@ -25,7 +25,8 @@ const MEMBERS = [
 function MemberDetailModal({ member, onClose }) {
     if (!member) return null;
     return (
-        <Modal open onClose={onClose}>
+        // Grid 2 kolom kartu profil → lg.
+        <Modal open onClose={onClose} size="lg">
             <div className="flex items-center justify-between px-6 py-4 bg-accent/60 border-b border-border/60">
                 <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
                     <UserRound size={20} />
