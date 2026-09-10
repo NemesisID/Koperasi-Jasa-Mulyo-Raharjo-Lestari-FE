@@ -4,15 +4,16 @@ import { Head } from '@/lib/shims';
 import { useAuth } from '@/lib/auth';
 import {
     CheckCircle2, ChevronLeft, ChevronRight, Clock,
-    Filter, Plus, Search, X
+    FileSpreadsheet, FileText, Filter, Plus, Search, X
 } from 'lucide-react';
 import { ManagerShell } from '@/Components/Koperasi/ManagerShell';
 import { FormPopup, StatusPopup } from '@/Components/Koperasi/Popups';
-import { api, useApi, rp, dfmt } from '@/lib/api';
+import { api, useApi, download, rp, dfmt } from '@/lib/api';
 import ComplaintsDeskPage from './ComplaintsDesk';
 import UsersPage from './Users';
 import WajibOverviewPage from './WajibOverview';
 import PickupMonitorPage from './PickupMonitor';
+import WithdrawalsPage from './Withdrawals';
 
 // ─── Popup context ────────────────────────────────────────────
 const PopupCtx = createContext({ openForm: () => {}, showStatus: () => {} });
@@ -21,6 +22,36 @@ export const usePopup = () => useContext(PopupCtx);
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
 // ─── Reusable Small Components ────────────────────────────────
+// Unduh laporan (alur.md: Excel & PDF) — type: laba_rugi | trash_volume.
+function ExportButtons({ type, start, end, light }) {
+    const [busy, setBusy] = useState('');
+    const go = async (format) => {
+        setBusy(format);
+        try {
+            await download(`/reports/export?type=${type}&period_start=${start}&period_end=${end}&format=${format}`, `laporan-${type}-${format === 'xlsx' ? 'excel' : 'pdf'}.${format}`);
+        } catch (err) {
+            alert(err.message || 'Unduhan gagal.');
+        } finally { setBusy(''); }
+    };
+    const base = light
+        ? 'bg-white text-primary shadow-sm hover:bg-blue-50'
+        : 'border border-primary/40 bg-card text-primary hover:bg-primary hover:text-white';
+    return (
+        <div className="flex gap-2">
+            <button onClick={() => go('xlsx')} disabled={Boolean(busy)}
+                className={cn('flex h-10 items-center gap-2 rounded-xl px-4 text-xs font-semibold transition-all disabled:opacity-60', base)}>
+                <FileSpreadsheet size={16} />
+                <span>{busy === 'xlsx' ? 'Menyiapkan…' : 'Excel'}</span>
+            </button>
+            <button onClick={() => go('pdf')} disabled={Boolean(busy)}
+                className={cn('flex h-10 items-center gap-2 rounded-xl px-4 text-xs font-semibold transition-all disabled:opacity-60', base)}>
+                <FileText size={16} />
+                <span>{busy === 'pdf' ? 'Menyiapkan…' : 'PDF'}</span>
+            </button>
+        </div>
+    );
+}
+
 function PageHeader({ title, desc, action }) {
     return (
         <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -618,6 +649,9 @@ function TransactionPage({ type, title, desc }) {
     const { openForm } = usePopup();
     const { data, meta, loading } = useApi(`/transactions?type=${type}&per_page=15`);
     const rows = data ?? [];
+    const now = new Date();
+    const start = `${now.getFullYear()}-01-01`;
+    const end = now.toISOString().slice(0, 10);
 
     return (
         <div className="flex flex-col gap-6">
@@ -625,13 +659,16 @@ function TransactionPage({ type, title, desc }) {
                 title={title}
                 desc={desc}
                 action={
-                    <button
-                        onClick={() => openForm(type === 'income' ? 'income' : 'expense')}
-                        className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
-                    >
-                        <Plus size={16} />
-                        <span>{type === 'income' ? 'Input Pendapatan Manual' : 'Input Pengeluaran Baru'}</span>
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                        <ExportButtons type="laba_rugi" start={start} end={end} />
+                        <button
+                            onClick={() => openForm(type === 'income' ? 'income' : 'expense')}
+                            className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
+                        >
+                            <Plus size={16} />
+                            <span>{type === 'income' ? 'Input Pendapatan Manual' : 'Input Pengeluaran Baru'}</span>
+                        </button>
+                    </div>
                 }
             />
 
@@ -754,12 +791,15 @@ function ReportHubPage({ setPage }) {
                             ))}
                         </div>
                     </div>
-                    <button
-                        onClick={() => setPage('laporan-pemasukan')}
-                        className="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-white text-xs font-bold text-primary shadow-sm hover:bg-blue-50"
-                    >
-                        Lihat Pemasukan
-                    </button>
+                    <div className="mt-6 flex flex-col gap-2">
+                        <ExportButtons light type="trash_volume" start={start} end={end} />
+                        <button
+                            onClick={() => setPage('laporan-pemasukan')}
+                            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-white text-xs font-bold text-primary shadow-sm hover:bg-blue-50"
+                        >
+                            Lihat Pemasukan
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -800,6 +840,7 @@ function ReportProfitLossDetail({ setPage }) {
             <PageHeader
                 title={`Laporan Laba Rugi (P&L) ${now.getFullYear()}`}
                 desc="Ikhtisar pendapatan operasional vs beban pengeluaran berjalan."
+                action={<ExportButtons type="laba_rugi" start={start} end={end} />}
             />
 
             <div className="grid gap-5 md:grid-cols-3">
@@ -1030,6 +1071,8 @@ function ManagerPages({ page, setPage }) {
             return <SavingsByLabelPage label="SUKARELA" />;
         case 'shu':
             return <ShuPage />;
+        case 'penarikan':
+            return <WithdrawalsPage />;
         case 'pendapatan':
             return <TransactionPage type="income" title="Manajemen Pendapatan" desc="Kelola dan pantau seluruh arus pendapatan koperasi secara real-time." />;
         case 'pengeluaran':
@@ -1056,6 +1099,7 @@ const pageTitles = {
     'simpanan-wajib': 'Simpanan Wajib',
     'simpanan-sukarela': 'Simpanan Sukarela',
     'shu': 'Sisa Hasil Usaha (SHU)',
+    'penarikan': 'Penarikan Tunai',
     'pendapatan': 'Manajemen Pendapatan',
     'pengeluaran': 'Manajemen Pengeluaran',
     'penjemputan': 'Monitoring Pengambilan Sampah',

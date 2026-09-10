@@ -72,6 +72,7 @@ function UserForm({ user, onDone, onCancel }) {
                     <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Role
                         <select required value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className={inputCls}>
                             <option value="petugas">Petugas</option>
+                            <option value="pengepul">Pengepul</option>
                             <option value="pengurus">Pengurus</option>
                             <option value="ketua">Ketua</option>
                             <option value="anggota">Anggota</option>
@@ -169,6 +170,7 @@ export default function UsersPage({ showStatus }) {
                             <option value="ketua">Ketua</option>
                             <option value="pengurus">Pengurus</option>
                             <option value="petugas">Petugas</option>
+                            <option value="pengepul">Pengepul</option>
                             <option value="anggota">Anggota</option>
                         </select>
                     </div>

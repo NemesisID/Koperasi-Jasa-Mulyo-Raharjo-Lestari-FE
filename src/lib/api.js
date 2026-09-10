@@ -35,6 +35,24 @@ export async function api(path, { method = 'GET', body, headers } = {}) {
     throw err;
 }
 
+// Unduh file (blob) dengan token auth — untuk export laporan csv/xlsx/pdf.
+export async function download(path, filename) {
+    const headers = { Accept: '*/*' };
+    const token = getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/api/v1${path}`, { headers });
+    if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.message || `Unduhan gagal (${res.status})`);
+    }
+    const url = URL.createObjectURL(await res.blob());
+    const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
 // Hook fetch untuk envelope {success, message, data, meta}.
 export function useApi(path, deps = []) {
     const [state, setState] = useState({ data: null, meta: null, loading: Boolean(path), error: null });

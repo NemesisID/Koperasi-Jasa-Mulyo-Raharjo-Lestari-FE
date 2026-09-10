@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import { login, useAuth, logout } from '@/lib/auth';
 import { Building2, Eye, EyeOff, Leaf, LockKeyhole, LogIn, UserRound } from 'lucide-react';
 
-const HOME_BY_ROLE = { pengurus: '/pengurus', ketua: '/pengurus', petugas: '/petugas', anggota: '/anggota' };
+const HOME_BY_ROLE = { pengurus: '/pengurus', ketua: '/pengurus', petugas: '/petugas', pengepul: '/petugas', anggota: '/anggota' };
 
 function FeatureCard({ icon: Icon, title, description, green = false }) {
     return (
@@ -97,6 +97,11 @@ function LoginCard() {
                     className="flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-base font-semibold text-white shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5 disabled:opacity-60">
                     {processing ? 'Memproses...' : 'Masuk'} {!processing && <LogIn size={18} />}
                 </button>
+
+                <p className="text-center text-xs text-muted-foreground">
+                    Belum punya akun?{' '}
+                    <Link to="/register" className="font-semibold text-primary hover:underline">Daftar sebagai anggota</Link>
+                </p>
             </form>
 
         </section>

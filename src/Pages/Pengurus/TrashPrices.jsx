@@ -1,49 +1,150 @@
-// FE-2.3 — UI Manajemen Harga Sampah Harian: katalog per kategori,
-// input cepat pembaruan harga oleh Bendahara, modal riwayat perubahan.
-// Skema harga: gudang vs jemput lapangan (non-logam diskon Rp300, logam Rp2.000).
+// FE-2.3 — UI Manajemen Katalog & Harga Sampah (alur.md):
+// card utama organik / campur / anorganik, buat-edit kategori,
+// harga jual → biaya admin auto 20% → harga bersih (jual − admin).
 import { useState } from 'react';
 import {
-    CheckCircle2, History, Recycle, Save, Tag, TrendingDown, TrendingUp, X,
+    CheckCircle2, History, Pencil, Plus, Recycle, Save, Tag, TrendingDown, TrendingUp, X,
 } from 'lucide-react';
-import { PageHeader, StatCard, Pager } from '@/Components/Koperasi/ManagerUI';
+import { PageHeader, StatCard } from '@/Components/Koperasi/ManagerUI';
 import { Modal } from '@/Components/Koperasi/Popups';
+import { useApi, api, rp } from '@/lib/api';
 import { usePopup } from './Index';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
-// ponytail: mock katalog sampah anorganik (harga Ponorogo) sampai
-// endpoint /api/v1/trash-categories tersedia.
-const INITIAL_CATALOG = [
-    { id: 1, name: 'Botol PET Bening', category: 'Plastik', unit: 'kg', warehouse: 3500, prevWarehouse: 3400 },
-    { id: 2, name: 'Plastik Kresek / Kantong', category: 'Plastik', unit: 'kg', warehouse: 1500, prevWarehouse: 1600 },
-    { id: 3, name: 'Kardus / Karton', category: 'Kertas', unit: 'kg', warehouse: 2000, prevWarehouse: 2000 },
-    { id: 4, name: 'Kertas HVS Bekas', category: 'Kertas', unit: 'kg', warehouse: 2500, prevWarehouse: 2400 },
-    { id: 5, name: 'Kaleng Aluminium', category: 'Logam', unit: 'kg', warehouse: 12000, prevWarehouse: 11500 },
-    { id: 6, name: 'Besi / Besi Tua', category: 'Logam', unit: 'kg', warehouse: 4500, prevWarehouse: 4700 },
-    { id: 7, name: 'Tutup Galon Aqua', category: 'Plastik', unit: 'biji', warehouse: 300, prevWarehouse: 300 },
-    { id: 8, name: 'Kaca / pecahan beling', category: 'Kaca', unit: 'kg', warehouse: 1000, prevWarehouse: 900 },
+const TYPES = ['logam', 'besi', 'kertas', 'plastik', 'elektronik', 'organik', 'campur', 'lainnya'];
+const UNITS = ['kg', 'biji', 'unit'];
+// Card utama (alur.md): organik, campur, anorganik = sisanya.
+const MAIN_GROUPS = [
+    { key: 'semua', label: 'Semua', match: () => true },
+    { key: 'organik', label: 'Organik', match: c => c.type === 'organik' },
+    { key: 'campur', label: 'Sampah Campur', match: c => c.type === 'campur' },
+    { key: 'anorganik', label: 'Anorganik', match: c => !['organik', 'campur'].includes(c.type) },
 ];
 
-const PRICE_LOGS = [
-    { date: '04 Sep 2026', item: 'Botol PET Bening', from: 'Rp 3.400', to: 'Rp 3.500', by: 'Bendahara Siti' },
-    { date: '04 Sep 2026', item: 'Kaleng Aluminium', from: 'Rp 11.500', to: 'Rp 12.000', by: 'Bendahara Siti' },
-    { date: '03 Sep 2026', item: 'Besi / Besi Tua', from: 'Rp 4.700', to: 'Rp 4.500', by: 'Bendahara Siti' },
-    { date: '03 Sep 2026', item: 'Kertas HVS Bekas', from: 'Rp 2.400', to: 'Rp 2.500', by: 'Admin Bambang' },
-    { date: '02 Sep 2026', item: 'Plastik Kresek / Kantong', from: 'Rp 1.600', to: 'Rp 1.500', by: 'Bendahara Siti' },
-];
+const inputCls = 'h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15';
 
-const rp = (n) => 'Rp ' + n.toLocaleString('id-ID');
+function CategoryFormModal({ category, onClose, onSaved }) {
+    const [error, setError] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [form, setForm] = useState(() => ({
+        name: category?.name ?? '',
+        type: category?.type ?? 'plastik',
+        unit: category?.unit ?? 'kg',
+        price_sorted: category?.price_sorted ?? 0,
+        price_unsorted: category?.price_unsorted ?? 0,
+        price_sell: category?.price_sell ?? 0,
+        price_admin: category?.price_admin ?? 0,
+    }));
+    const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+    // Harga bersih (alur.md): admin otomatis 20% dari harga jual, masih bisa disunting.
+    const setSell = (v) => setForm(f => ({ ...f, price_sell: v, price_admin: Math.round(v * 0.2) }));
+    const priceMember = Math.max(0, form.price_sell - form.price_admin);
 
-// Harga jemput lapangan: logam dipotong Rp2.000, non-logam Rp300 (per lampiran WBS).
-const pickupPrice = (item) => Math.max(0, item.warehouse - (item.category === 'Logam' ? 2000 : 300));
+    const submit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSaving(true);
+        try {
+            await api(category ? `/trash-categories/${category.id}` : '/trash-categories', {
+                method: category ? 'PUT' : 'POST',
+                body: {
+                    ...form,
+                    price_sorted: Number(form.price_sorted),
+                    price_unsorted: Number(form.price_unsorted),
+                    price_sell: Number(form.price_sell),
+                    price_admin: Number(form.price_admin),
+                },
+            });
+            onSaved(category ? 'Kategori berhasil diperbarui.' : 'Kategori baru berhasil dibuat.');
+        } catch (err) {
+            const fieldErrs = err.errors && Object.values(err.errors)[0]?.[0];
+            setError(fieldErrs || err.message || 'Gagal menyimpan kategori.');
+        } finally { setSaving(false); }
+    };
 
-function HistoryModal({ onClose }) {
+    return (
+        <Modal open onClose={onClose}>
+            <div className="flex items-center justify-between px-6 py-4 bg-accent/60 border-b border-border/60">
+                <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
+                    <Tag size={20} />
+                    <span>{category ? `Edit — ${category.name}` : 'Kategori Sampah Baru'}</span>
+                </h2>
+                <button type="button" onClick={onClose} aria-label="Tutup"
+                    className="rounded-lg p-1 text-muted-foreground hover:bg-black/5 hover:text-foreground transition-colors">
+                    <X size={18} />
+                </button>
+            </div>
+            <form onSubmit={submit} className="flex flex-col gap-4 p-6 bg-card">
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold text-foreground/80">Nama</label>
+                        <input required value={form.name} onChange={e => set('name', e.target.value)} className={inputCls} placeholder="Botol PET Bening" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-semibold text-foreground/80">Jenis</label>
+                            <select value={form.type} onChange={e => set('type', e.target.value)} className={inputCls}>
+                                {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-semibold text-foreground/80">Satuan</label>
+                            <select value={form.unit} onChange={e => set('unit', e.target.value)} className={inputCls}>
+                                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold text-foreground/80">Harga Gudang — Tersortir (Rp)</label>
+                        <input required type="number" min="0" value={form.price_sorted} onChange={e => set('price_sorted', e.target.value)} className={inputCls} />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold text-foreground/80">Harga Gudang — Belum Sortir (Rp)</label>
+                        <input required type="number" min="0" value={form.price_unsorted} onChange={e => set('price_unsorted', e.target.value)} className={inputCls} />
+                    </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold text-foreground/80">Harga Jual (Rp)</label>
+                        <input required type="number" min="0" value={form.price_sell} onChange={e => setSell(Number(e.target.value))} className={inputCls} />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold text-foreground/80">Biaya Admin (auto 20% harga jual)</label>
+                        <input required type="number" min="0" value={form.price_admin} onChange={e => set('price_admin', Number(e.target.value))} className={inputCls} />
+                    </div>
+                </div>
+                <div className="rounded-xl bg-[#eef3fc] px-4 py-3 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-primary">Harga Bersih untuk Anggota (otomatis)</span>
+                    <strong className="text-sm font-bold text-primary">{rp(priceMember)}</strong>
+                </div>
+                {error && <p className="text-xs font-medium text-destructive">{error}</p>}
+                <div className="flex gap-3 pt-2">
+                    <button type="button" onClick={onClose}
+                        className="h-11 flex-1 rounded-xl border border-border bg-card text-sm font-semibold text-foreground/80 hover:bg-secondary transition-all">
+                        Batal
+                    </button>
+                    <button type="submit" disabled={saving}
+                        className="h-11 flex-[1.5] rounded-xl bg-primary text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-60">
+                        {saving ? 'Menyimpan...' : 'Simpan Kategori'}
+                    </button>
+                </div>
+            </form>
+        </Modal>
+    );
+}
+
+function HistoryModal({ category, onClose }) {
+    const { data, loading } = useApi(`/trash-categories/${category.id}/price-history`);
+    const rows = data ?? [];
     return (
         <Modal open onClose={onClose}>
             <div className="flex items-center justify-between px-6 py-4 bg-accent/60 border-b border-border/60">
                 <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
                     <History size={20} />
-                    <span>Riwayat Perubahan Harga</span>
+                    <span>Riwayat Harga — {category.name}</span>
                 </h2>
                 <button type="button" onClick={onClose} aria-label="Tutup"
                     className="rounded-lg p-1 text-muted-foreground hover:bg-black/5 hover:text-foreground transition-colors">
@@ -51,27 +152,34 @@ function HistoryModal({ onClose }) {
                 </button>
             </div>
             <div className="overflow-x-auto bg-card">
-                <table className="w-full min-w-[480px] text-left text-sm">
+                <table className="w-full min-w-[420px] text-left text-sm">
                     <thead className="bg-[#eef3fc] text-xs font-bold uppercase tracking-wider text-slate-700">
                         <tr>
                             <th className="px-5 py-3">Tanggal</th>
-                            <th className="px-5 py-3">Item</th>
-                            <th className="px-5 py-3">Perubahan</th>
+                            <th className="px-5 py-3">Gudang Sortir (lama → baru)</th>
+                            <th className="px-5 py-3">Belum Sortir (lama → baru)</th>
                             <th className="px-5 py-3">Oleh</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border/60">
-                        {PRICE_LOGS.map((log, i) => (
-                            <tr key={i} className="hover:bg-secondary/40 transition-colors">
-                                <td className="px-5 py-3.5 text-muted-foreground whitespace-nowrap">{log.date}</td>
-                                <td className="px-5 py-3.5 font-semibold text-foreground">{log.item}</td>
-                                <td className="px-5 py-3.5 whitespace-nowrap">
-                                    <span className="text-xs text-muted-foreground line-through">{log.from}</span>
-                                    <span className="ml-1.5 font-bold text-primary">{log.to}</span>
-                                </td>
-                                <td className="px-5 py-3.5 text-muted-foreground">{log.by}</td>
-                            </tr>
-                        ))}
+                        {loading
+                            ? <tr><td colSpan={4} className="px-5 py-4 text-muted-foreground">Memuat…</td></tr>
+                            : rows.length === 0
+                                ? <tr><td colSpan={4} className="px-5 py-4 text-muted-foreground">Belum ada riwayat perubahan harga.</td></tr>
+                                : rows.map((log, i) => (
+                                    <tr key={i} className="hover:bg-secondary/40 transition-colors">
+                                        <td className="px-5 py-3.5 text-muted-foreground whitespace-nowrap">{new Date(log.changed_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                                        <td className="px-5 py-3.5 whitespace-nowrap">
+                                            <span className="text-xs text-muted-foreground line-through">{rp(log.old_price_sorted)}</span>
+                                            <span className="ml-1.5 font-bold text-primary">{rp(log.new_price_sorted)}</span>
+                                        </td>
+                                        <td className="px-5 py-3.5 whitespace-nowrap">
+                                            <span className="text-xs text-muted-foreground line-through">{rp(log.old_price_unsorted)}</span>
+                                            <span className="ml-1.5 font-bold text-primary">{rp(log.new_price_unsorted)}</span>
+                                        </td>
+                                        <td className="px-5 py-3.5 text-muted-foreground">{log.changed_by?.name ?? '-'}</td>
+                                    </tr>
+                                ))}
                     </tbody>
                 </table>
             </div>
@@ -87,134 +195,188 @@ function HistoryModal({ onClose }) {
 
 export default function TrashPricesPage() {
     const { showStatus } = usePopup();
-    const [catalog, setCatalog] = useState(INITIAL_CATALOG);
-    const [filter, setFilter] = useState('Semua');
-    const [historyOpen, setHistoryOpen] = useState(false);
+    const { data, loading, error, reload } = useApi('/trash-categories');
+    const [group, setGroup] = useState('semua');
+    const [editing, setEditing] = useState(null);   // null | {} (baru) | category
+    const [historyOf, setHistoryOf] = useState(null);
 
-    const categories = ['Semua', ...new Set(catalog.map(c => c.category))];
-    const filtered = filter === 'Semua' ? catalog : catalog.filter(c => c.category === filter);
+    const catalog = data ?? [];
+    const active = MAIN_GROUPS.find(g => g.key === group) ?? MAIN_GROUPS[0];
+    const filtered = catalog.filter(active.match);
+    const [savingId, setSavingId] = useState(null);
+    const [drafts, setDrafts] = useState({}); // id → { price_sorted, price_unsorted, price_sell, price_admin }
 
-    const setPrice = (id, value) =>
-        setCatalog(prev => prev.map(c => c.id === id ? { ...c, warehouse: Math.max(0, Number(value) || 0) } : c));
+    const draftOf = (c) => drafts[c.id] ?? {
+        price_sorted: c.price_sorted, price_unsorted: c.price_unsorted,
+        price_sell: c.price_sell, price_admin: c.price_admin,
+    };
+    const setDraft = (id, k, v, base) => setDrafts(prev => ({
+        ...prev,
+        [id]: { ...(prev[id] ?? base), [k]: v, ...(k === 'price_sell' ? { price_admin: Math.round(Number(v) * 0.2) } : {}) },
+    }));
 
-    const saveAll = () => showStatus('Harga Harian Tersimpan', 'Seluruh pembaruan harga katalog telah dicatat pada log audit.');
+    const savePrice = async (c) => {
+        const d = draftOf(c);
+        setSavingId(c.id);
+        try {
+            await api(`/trash-categories/${c.id}/price`, { method: 'PATCH', body: {
+                price_sorted: Number(d.price_sorted),
+                price_unsorted: Number(d.price_unsorted),
+                price_sell: Number(d.price_sell),
+                price_admin: Number(d.price_admin),
+            } });
+            setDrafts(prev => { const { [c.id]: _, ...rest } = prev; return rest; });
+            reload();
+            showStatus('Harga Tersimpan', `Harga ${c.name} berhasil diperbarui dan tercatat di log audit.`);
+        } catch (err) {
+            alert(err.message || 'Gagal menyimpan harga.');
+        } finally { setSavingId(null); }
+    };
 
     return (
         <div className="flex flex-col gap-6">
             <PageHeader
-                title="Manajemen Harga Sampah"
-                desc="Perbarui harga katalog sampah harian — setiap perubahan tercatat untuk audit transparansi."
+                title="Manajemen Katalog Sampah"
+                desc="Kelola kategori & harga sampah — harga bersih anggota dihitung otomatis (harga jual − 20% admin)."
                 action={
-                    <>
-                        <button
-                            onClick={() => setHistoryOpen(true)}
-                            className="flex h-10 items-center gap-2 rounded-xl border border-primary/40 bg-card px-4 text-xs font-semibold text-primary transition-all hover:bg-primary hover:text-white"
-                        >
-                            <History size={16} />
-                            <span>Riwayat Harga</span>
-                        </button>
-                        <button
-                            onClick={saveAll}
-                            className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
-                        >
-                            <Save size={16} />
-                            <span>Simpan Harga Hari Ini</span>
-                        </button>
-                    </>
+                    <button
+                        onClick={() => setEditing({})}
+                        className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
+                    >
+                        <Plus size={16} />
+                        <span>Buat Kategori</span>
+                    </button>
                 }
             />
 
             <div className="grid gap-5 md:grid-cols-3">
-                <StatCard icon={Tag} label="Item Katalog Aktif" value={`${catalog.length} Item`} note="4 Kategori" tone="blue" />
-                <StatCard icon={TrendingUp} label="Harga Naik Hari Ini" value="3 Item" note="↗ PET, Kaleng, HVS" tone="green" />
-                <StatCard icon={TrendingDown} label="Harga Turun Hari Ini" value="2 Item" note="↘ Besi, Kresek" tone="red" />
+                <StatCard icon={Tag} label="Kategori Katalog" value={`${catalog.length} Item`} note={`${new Set(catalog.map(c => c.type)).size} jenis`} tone="blue" />
+                <StatCard icon={TrendingUp} label="Harga Jual Tertinggi" value={rp(Math.max(0, ...catalog.map(c => Number(c.price_sell))))} note="Harga jual ke pengepul" tone="green" />
+                <StatCard icon={TrendingDown} label="Harga Bersih Tertinggi" value={rp(Math.max(0, ...catalog.map(c => Number(c.price_member))))} note="Diterima anggota (jual − admin)" tone="red" />
             </div>
 
             <section className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
                 <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center border-b border-border/60">
-                    <h2 className="text-lg font-bold text-foreground">Katalog Harga Sampah Anorganik</h2>
+                    <h2 className="text-lg font-bold text-foreground">Katalog Harga Sampah</h2>
                     <div className="flex flex-wrap items-center gap-2">
-                        {categories.map(cat => (
+                        {MAIN_GROUPS.map(g => (
                             <button
-                                key={cat}
-                                onClick={() => setFilter(cat)}
+                                key={g.key}
+                                onClick={() => setGroup(g.key)}
                                 className={cn(
                                     'rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all',
-                                    filter === cat
+                                    group === g.key
                                         ? 'bg-primary text-white shadow-xs'
                                         : 'border border-border bg-card text-muted-foreground hover:bg-secondary hover:text-primary'
                                 )}
                             >
-                                {cat}
+                                {g.label}
                             </button>
                         ))}
                     </div>
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[820px] text-left text-sm">
+                    <table className="w-full min-w-[900px] text-left text-sm">
                         <thead className="bg-[#eef3fc] text-xs font-bold uppercase tracking-wider text-slate-700">
                             <tr>
                                 <th className="px-6 py-3.5">Jenis Sampah</th>
-                                <th className="px-6 py-3.5">Satuan</th>
-                                <th className="px-6 py-3.5">Harga Gudang</th>
-                                <th className="px-6 py-3.5">Harga Jemput</th>
-                                <th className="px-6 py-3.5">Fluktuasi</th>
+                                <th className="px-6 py-3.5">Gudang (sortir / belum)</th>
+                                <th className="px-6 py-3.5">Harga Jual</th>
+                                <th className="px-6 py-3.5">Admin (auto 20%)</th>
+                                <th className="px-6 py-3.5">Harga Bersih</th>
+                                <th className="px-6 py-3.5">Aksi</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
-                            {filtered.map(item => {
-                                const isMetal = item.category === 'Logam';
-                                const diff = item.warehouse - item.prevWarehouse;
+                            {loading
+                                ? <tr><td colSpan={6} className="px-6 py-4 text-muted-foreground">Memuat katalog…</td></tr>
+                            : error
+                                ? <tr><td colSpan={6} className="px-6 py-4 text-muted-foreground">Gagal memuat katalog.</td></tr>
+                            : filtered.length === 0
+                                ? <tr><td colSpan={6} className="px-6 py-4 text-muted-foreground">Belum ada kategori di grup ini.</td></tr>
+                            : filtered.map(c => {
+                                const d = draftOf(c);
+                                const priceMember = Math.max(0, d.price_sell - d.price_admin);
                                 return (
-                                    <tr key={item.id} className="hover:bg-secondary/40 transition-colors">
+                                    <tr key={c.id} className="hover:bg-secondary/40 transition-colors">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 <span className="flex size-9 items-center justify-center rounded-xl bg-blue-100 text-primary">
                                                     <Recycle size={18} />
                                                 </span>
                                                 <div>
-                                                    <span className="block font-semibold text-foreground">{item.name}</span>
-                                                    <span className="text-xs text-muted-foreground">{item.category}</span>
+                                                    <span className="block font-semibold text-foreground">{c.name}</span>
+                                                    <span className="text-xs capitalize text-muted-foreground">{c.type} · per {c.unit}</span>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-muted-foreground">{item.unit}</td>
                                         <td className="px-6 py-4">
-                                            <div className="relative w-36">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-primary">Rp</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    value={item.warehouse}
-                                                    onChange={e => setPrice(item.id, e.target.value)}
-                                                    aria-label={`Harga gudang ${item.name}`}
-                                                    className="h-9 w-full rounded-xl border border-border bg-slate-50/50 pl-9 pr-3 text-xs font-bold text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
-                                                />
+                                            <div className="flex items-center gap-1.5">
+                                                {[['price_sorted', 'sortir'], ['price_unsorted', 'belum']].map(([k, ph]) => (
+                                                    <input
+                                                        key={k}
+                                                        type="number"
+                                                        min="0"
+                                                        value={d[k]}
+                                                        onChange={e => setDraft(c.id, k, e.target.value, d)}
+                                                        aria-label={`${k} ${c.name}`}
+                                                        placeholder={ph}
+                                                        className="h-9 w-28 rounded-xl border border-border bg-slate-50/50 px-3 text-xs font-bold text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+                                                    />
+                                                ))}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-foreground">
-                                                {rp(pickupPrice(item))}
-                                            </span>
-                                            <span className="ml-2 text-[10px] text-muted-foreground">
-                                                {isMetal ? '−Rp2.000' : '−Rp300'}
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value={d.price_sell}
+                                                onChange={e => setDraft(c.id, 'price_sell', e.target.value, d)}
+                                                aria-label={`Harga jual ${c.name}`}
+                                                className="h-9 w-28 rounded-xl border border-border bg-slate-50/50 px-3 text-xs font-bold text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+                                            />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value={d.price_admin}
+                                                onChange={e => setDraft(c.id, 'price_admin', e.target.value, d)}
+                                                aria-label={`Biaya admin ${c.name}`}
+                                                className="h-9 w-28 rounded-xl border border-border bg-slate-50/50 px-3 text-xs font-bold text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+                                            />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
+                                                {rp(priceMember)}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            {diff > 0 ? (
-                                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
-                                                    <TrendingUp size={14} /> +{rp(diff)}
-                                                </span>
-                                            ) : diff < 0 ? (
-                                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600">
-                                                    <TrendingDown size={14} /> −{rp(Math.abs(diff))}
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground">
-                                                    <CheckCircle2 size={14} /> Stabil
-                                                </span>
-                                            )}
+                                            <div className="flex items-center gap-1.5">
+                                                <button
+                                                    onClick={() => savePrice(c)}
+                                                    disabled={savingId === c.id}
+                                                    title="Simpan harga"
+                                                    className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-white hover:bg-primary/90 disabled:opacity-50"
+                                                >
+                                                    <Save size={14} />
+                                                </button>
+                                                <button
+                                                    onClick={() => setEditing(c)}
+                                                    title="Edit kategori"
+                                                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-foreground/70 hover:border-primary hover:text-primary"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+                                                <button
+                                                    onClick={() => setHistoryOf(c)}
+                                                    title="Riwayat harga"
+                                                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-foreground/70 hover:border-primary hover:text-primary"
+                                                >
+                                                    <History size={14} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 );
@@ -224,16 +386,23 @@ export default function TrashPricesPage() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-border/60 bg-slate-50/50 text-xs text-muted-foreground">
-                    <span>Menampilkan {filtered.length} dari {catalog.length} item — harga per 4 September 2026</span>
-                    <Pager total={3} />
+                    <span>Menampilkan {filtered.length} dari {catalog.length} kategori</span>
+                    <span className="inline-flex items-center gap-1"><CheckCircle2 size={13} /> Perubahan harga tercatat di log audit</span>
                 </div>
             </section>
 
             <p className="text-xs text-muted-foreground">
-                Harga jemput lapangan dihitung otomatis dari harga gudang: potongan Rp2.000 untuk logam dan Rp300 untuk kategori non-logam.
+                Harga bersih untuk katalog warga = harga jual − biaya admin (terisi otomatis 20% dari harga jual, tetap bisa disunting).
             </p>
 
-            {historyOpen && <HistoryModal onClose={() => setHistoryOpen(false)} />}
+            {editing !== null && (
+                <CategoryFormModal
+                    category={editing.id ? editing : null}
+                    onClose={() => setEditing(null)}
+                    onSaved={msg => { setEditing(null); reload(); showStatus('Katalog Tersimpan', msg); }}
+                />
+            )}
+            {historyOf && <HistoryModal category={historyOf} onClose={() => setHistoryOf(null)} />}
         </div>
     );
 }

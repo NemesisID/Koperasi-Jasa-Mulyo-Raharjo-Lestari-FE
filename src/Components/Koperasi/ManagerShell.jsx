@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, logout } from '@/lib/auth';
 import {
-    Bell, ChevronDown, CircleHelp, FileBarChart, Leaf,
+    Banknote, Bell, ChevronDown, CircleHelp, FileBarChart, Leaf,
     LayoutGrid, LogOut, Menu, MessageSquareWarning, Settings,
     TrendingDown, TrendingUp, Truck, UserRound, Users, WalletCards, X,
 } from 'lucide-react';
@@ -116,6 +116,12 @@ export function ManagerShell({ children, currentPage, setPage }) {
                 <button onClick={() => nav('shu')} className={navBtnCls(is('shu'))}>
                     <WalletCards size={18} />
                     <span>SHU</span>
+                </button>
+
+                {/* Penarikan Tunai */}
+                <button onClick={() => nav('penarikan')} className={navBtnCls(is('penarikan'))}>
+                    <Banknote size={18} />
+                    <span>Penarikan Tunai</span>
                 </button>
 
                 {/* Pendapatan */}

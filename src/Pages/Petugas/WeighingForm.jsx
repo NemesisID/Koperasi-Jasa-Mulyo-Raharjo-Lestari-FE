@@ -3,7 +3,7 @@
 // (diantar ke gudang vs dijemput), dan kalkulator preview real-time 20%.
 import { useMemo, useState } from 'react';
 import {
-    CheckCircle2, Home, Package, Plus, Scale, Trash2,
+    Camera, CheckCircle2, Home, Package, Plus, Scale, Trash2,
 } from 'lucide-react';
 import ReceiptSuccessModal from '@/Components/Koperasi/ReceiptSuccessModal';
 import { calcWeighing } from '@/lib/weighing';
@@ -27,6 +27,32 @@ export default function WeighingFormPage({ initialMember = null, onBack = null }
     const [receipt, setReceipt] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+
+    // R4 (revisi fase-2): dokumentasi foto timbang — kamera native + geotag + timestamp.
+    const [photo, setPhoto] = useState(null);
+    const [photoMeta, setPhotoMeta] = useState(null); // { time, lat, lng | null }
+
+    const onPhotoChange = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) { setPhoto(null); setPhotoMeta(null); return; }
+        setPhoto(file);
+        setPhotoMeta({ time: new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }), lat: null, lng: null });
+        // GPS opsional: kalau ditolak/off, foto tetap terunggah tanpa koordinat.
+        navigator.geolocation?.getCurrentPosition(
+            pos => setPhotoMeta(m => m ? { ...m, lat: pos.coords.latitude, lng: pos.coords.longitude } : m),
+            () => {},
+        );
+    };
+
+    const uploadPhoto = async (pickupId) => {
+        const fd = new FormData();
+        fd.append('photo', photo);
+        if (photoMeta?.lat != null) {
+            fd.append('latitude', photoMeta.lat);
+            fd.append('longitude', photoMeta.lng);
+        }
+        await api(`/pickups/${pickupId}/photo`, { method: 'POST', body: fd });
+    };
 
     // Default category when loaded
     const defaultCatId = categories[0]?.id ? String(categories[0].id) : '';
@@ -125,6 +151,15 @@ export default function WeighingFormPage({ initialMember = null, onBack = null }
                 body: { items: payloadItems },
             });
 
+            // R4: upload foto dokumentasi (opsional) — kegagalan tidak membatalkan timbangan yang sudah tersimpan.
+            if (photo) {
+                try {
+                    await uploadPhoto(pickupId);
+                } catch (photoErr) {
+                    setError(`Timbangan tersimpan, namun gagal mengunggah foto: ${photoErr.message}`);
+                }
+            }
+
             const receiptItems = validRows.map(r => {
                 const cat = categories.find(c => String(c.id) === String(r.categoryId));
                 const price = getPriceOf(r.categoryId);
@@ -156,6 +191,8 @@ export default function WeighingFormPage({ initialMember = null, onBack = null }
             setMemberSearch('');
             setSelectedMemberId('');
             setRows([{ categoryId: defaultCatId, quantity: '' }]);
+            setPhoto(null);
+            setPhotoMeta(null);
         } catch (err) {
             setError(err.message || 'Gagal menyimpan penimbangan sampah.');
         } finally {
@@ -354,6 +391,31 @@ export default function WeighingFormPage({ initialMember = null, onBack = null }
                                 </div>
                             );
                         })}
+                    </div>
+                </section>
+
+                {/* R4: dokumentasi foto timbang — kamera native mobile + timestamp & geotag */}
+                <section className="rounded-2xl border border-border/80 bg-card p-6 shadow-xs">
+                    <h2 className="flex items-center gap-2 text-base font-bold text-foreground">
+                        <Camera size={18} className="text-primary" /> Foto Dokumentasi
+                    </h2>
+                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <label className="flex h-11 cursor-pointer items-center justify-center gap-2 self-start rounded-xl border border-primary/40 bg-card px-4 text-xs font-semibold text-primary transition-all hover:bg-primary hover:text-white">
+                            <Camera size={15} />
+                            <span>{photo ? 'Ganti Foto' : 'Ambil Foto (Kamera)'}</span>
+                            <input type="file" accept="image/*" capture="environment" onChange={onPhotoChange} className="hidden" />
+                        </label>
+                        {photo && (
+                            <img src={URL.createObjectURL(photo)} alt="Preview dokumentasi" className="h-16 w-24 self-start rounded-xl border border-border/60 object-cover" />
+                        )}
+                        {photoMeta && (
+                            <p className="text-[11px] font-medium text-muted-foreground">
+                                {photoMeta.time}
+                                {photoMeta.lat != null
+                                    ? ` · ${photoMeta.lat.toFixed(5)}, ${photoMeta.lng.toFixed(5)}`
+                                    : ' · lokasi GPS tidak tersedia'}
+                            </p>
+                        )}
                     </div>
                 </section>
 

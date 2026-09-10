@@ -7,6 +7,7 @@ import {
 import { PageHeader, StatCard } from '@/Components/Koperasi/ManagerUI';
 import { Modal } from '@/Components/Koperasi/Popups';
 import { api, useApi, rp, dfmt } from '@/lib/api';
+import { complaintStatus } from '@/lib/complaint';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
@@ -45,7 +46,7 @@ function ActionModal({ complaint, onClose, onDone }) {
         }
     };
 
-    const isResolved = complaint.status === 'diterima' || complaint.status === 'ditolak' || complaint.status === 'selesai';
+    const isResolved = complaint.status === 'diterima' || complaint.status === 'ditolak';
 
     return (
         <Modal open onClose={onClose}>
@@ -95,7 +96,7 @@ function ActionModal({ complaint, onClose, onDone }) {
                 {/* Aksi */}
                 {isResolved ? (
                     <div className="flex flex-col gap-1 rounded-xl bg-emerald-50 p-4 text-xs font-semibold text-emerald-800">
-                        <span className="flex items-center gap-1.5"><CheckCircle2 size={16} /> Status: {complaint.status?.toUpperCase()}</span>
+                        <span className="flex items-center gap-1.5"><CheckCircle2 size={16} /> Status: {complaintStatus(complaint.status).label.toUpperCase()}</span>
                         {complaint.resolution_note && <p className="text-muted-foreground font-normal mt-1">Catatan: {complaint.resolution_note}</p>}
                         {complaint.adjustment_amount > 0 && <p className="text-emerald-700">Penyesuaian saldo: +{rp(complaint.adjustment_amount)}</p>}
                     </div>
@@ -195,7 +196,7 @@ export default function ComplaintsDeskPage({ onShowStatus }) {
         );
     };
 
-    const waiting = complaints.filter(c => c.status === 'diajukan' || c.status === 'diproses').length;
+    const waiting = complaints.filter(c => c.status === 'diajukan' || c.status === 'proses').length;
 
     return (
         <div className="flex flex-col gap-6">
@@ -248,11 +249,10 @@ export default function ComplaintsDeskPage({ onShowStatus }) {
                                     <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">{dfmt(c.created_at)}</td>
                                     <td className="px-6 py-4">
                                         <span className={cn(
-                                            'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize',
-                                            c.status === 'diterima' ? 'bg-emerald-100 text-emerald-700' :
-                                            c.status === 'ditolak' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'
+                                            'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                                            complaintStatus(c.status).cls
                                         )}>
-                                            ● {c.status}
+                                            ● {complaintStatus(c.status).label}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">

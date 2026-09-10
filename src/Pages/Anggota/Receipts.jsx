@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, MessageSquareWarning, Recycle, Wallet } from 'l
 import ComplaintFormModal from '@/Components/Koperasi/ComplaintFormModal';
 import { StatusPopup } from '@/Components/Koperasi/Popups';
 import { useApi, rp, dfmt } from '@/lib/api';
+import { complaintStatus } from '@/lib/complaint';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
@@ -145,14 +146,10 @@ export default function ReceiptsPage() {
                                         {receipt.complaint ? (
                                             <span className={cn(
                                                 'inline-flex items-center gap-1.5 self-start rounded-full px-3.5 py-1.5 text-xs font-bold sm:self-auto',
-                                                receipt.complaint.status === 'diterima'
-                                                    ? 'bg-emerald-100 text-emerald-800'
-                                                    : receipt.complaint.status === 'ditolak'
-                                                    ? 'bg-rose-100 text-rose-800'
-                                                    : 'bg-amber-100 text-amber-800'
+                                                complaintStatus(receipt.complaint.status).cls
                                             )}>
                                                 <MessageSquareWarning size={13} />
-                                                Komplain #{receipt.complaint.id} ({receipt.complaint.status})
+                                                Komplain #{receipt.complaint.id} · {complaintStatus(receipt.complaint.status).label}
                                             </span>
                                         ) : (
                                             <button

@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import {
-    ArrowDownToLine, Check, Eye, EyeOff, Leaf, LogOut,
-    Plus, Save, TrendingDown,
+    ArrowDownToLine, CalendarClock, Check, Eye, EyeOff, Leaf, LogOut,
+    Plus, Repeat, Save, TrendingDown,
     TrendingUp, UserPlus, WalletCards, X
 } from 'lucide-react';
 
@@ -28,7 +28,7 @@ export function Modal({ open, onClose, children }) {
 }
 
 // ─── Reusable form fields with clean styling ──────────────────
-function Field({ name, label, placeholder, type = 'text', defaultValue, required = true }) {
+function Field({ name, label, placeholder, type = 'text', defaultValue, required = true, min }) {
     return (
         <div className="flex flex-col gap-1.5">
             <label htmlFor={name} className="text-xs font-semibold text-foreground/80">{label}</label>
@@ -38,6 +38,7 @@ function Field({ name, label, placeholder, type = 'text', defaultValue, required
                 name={name}
                 type={type}
                 defaultValue={defaultValue}
+                min={min}
                 placeholder={placeholder}
                 className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all placeholder:text-muted-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
             />
@@ -144,9 +145,25 @@ const configs = {
         title: 'Distribusi SHU Baru',
         icon: WalletCards,
         tone: 'text-primary',
-        submit: 'Proses Distribusi',
+        submit: 'Kirim & Bagikan',
         submitCls: 'bg-primary hover:bg-primary/90 text-white',
         bg: 'bg-accent/60 border-b border-border/60',
+    },
+    requestPickup: {
+        title: 'Minta Jemput Sampah',
+        icon: CalendarClock,
+        tone: 'text-emerald-800',
+        submit: 'Kirim Permintaan',
+        submitCls: 'bg-emerald-700 hover:bg-emerald-800 text-white',
+        bg: 'bg-[#6bf1c2] text-emerald-900 border-b border-emerald-300',
+    },
+    routine: {
+        title: 'Atur Penjemputan Rutin',
+        icon: Repeat,
+        tone: 'text-emerald-800',
+        submit: 'Simpan Rutinan',
+        submitCls: 'bg-emerald-700 hover:bg-emerald-800 text-white',
+        bg: 'bg-[#6bf1c2] text-emerald-900 border-b border-emerald-300',
     },
 };
 
@@ -222,20 +239,41 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                     },
                 });
             } else if (kind === 'member') {
-                // Registrasi anggota via auth register-member (menunggu verifikasi)
-                res = await api('/auth/register-member', {
+                // Registrasi anggota oleh pengurus: user + member sekali jadi
+                res = await api('/members/register', {
                     method: 'POST',
                     body: {
                         name: fd.get('memberName'),
                         username: fd.get('username'),
                         email: `${fd.get('username')}@anggota.local`,
                         password: fd.get('password'),
-                        member_type: 'rumah',
-                        phone: '0000000000',
+                        member_type: fd.get('member_type'),
+                        phone: fd.get('phone'),
                         address: fd.get('address') || '-',
                     },
                 });
+            } else if (kind === 'requestPickup') {
+                res = await api('/pickups', {
+                    method: 'POST',
+                    body: {
+                        member_id: user?.member?.id,
+                        location_type: 'jemput_rumah',
+                        scheduled_at: fd.get('scheduled_at'),
+                        notes: fd.get('note') || null,
+                    },
+                });
+            } else if (kind === 'routine') {
+                const days = fd.getAll('days').map(Number);
+                const slots = fd.getAll('slots');
+                if (!days.length || !slots.length) {
+                    throw { message: 'Pilih minimal satu hari dan satu waktu penjemputan.' };
+                }
+                res = await api('/pickup-schedules', {
+                    method: 'POST',
+                    body: { days, slots },
+                });
             } else if (kind === 'distribution') {
+                // Simpan draft lalu publish — saldo anggota langsung dikredit (alur.md).
                 res = await api('/shu/simulate?save=1', {
                     method: 'POST',
                     body: {
@@ -243,6 +281,12 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                         net_profit: Number(String(fd.get('totalShu')).replace(/[^\d]/g, '')),
                     },
                 });
+                if (res?.data?.shu_distribution_id) {
+                    res = await api('/shu/publish', {
+                        method: 'POST',
+                        body: { shu_distribution_id: res.data.shu_distribution_id },
+                    });
+                }
             }
             onClose();
             onSuccess(res?.message || 'Data Berhasil Disimpan');
@@ -304,6 +348,10 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                             <Field name="memberName" label="Nama Anggota" placeholder="Nama Lengkap" />
                             <Field name="username" label="Username" placeholder="username_koperasi" />
                         </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <SelectField name="member_type" label="Kategori Anggota" options={['rumah', 'pasar']} />
+                            <Field name="phone" label="No. Telepon" placeholder="08xxxxxxxxxx" />
+                        </div>
                         <TextAreaField name="address" label="Alamat" placeholder="Alamat lengkap domisili" rows={2} />
                         <div className="grid gap-3 sm:grid-cols-2">
                             <div className="rounded-xl bg-[#eef3fc] px-4 py-3 flex items-center justify-between">
@@ -318,7 +366,7 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                                         id="password"
                                         name="password"
                                         type={showPw ? 'text' : 'password'}
-                                        placeholder="••••••••"
+                                        placeholder="Minimal 8 karakter"
                                         className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 pr-10 text-sm text-foreground transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
                                     />
                                     <button
@@ -343,13 +391,48 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                             <SelectField name="wasteType" label="Jenis Sampah" options={['Organik', 'Anorganik', 'Plastik', 'Kardus/Kertas', 'Minyak Jelantah']} />
                         </div>
                         <Field name="weight" label="Berat Sampah (kg)" placeholder="0.0" type="number" />
-                        <div className="flex flex-col gap-1.5">
-                            <label className="text-xs font-semibold text-foreground/80">Hasil Konversi Uang</label>
-                            <input
-                                readOnly
-                                value="Rp 50.000"
-                                className="h-10 w-full rounded-xl border border-slate-200 bg-secondary/80 px-3.5 text-sm font-semibold text-primary"
-                            />
+                        <p className="text-xs text-muted-foreground">Nilai rupiah dihitung petugas saat penimbangan.</p>
+                    </>
+                )}
+
+                {kind === 'requestPickup' && (
+                    <>
+                        {/* min = sekarang (waktu lokal) — backend juga validasi after_or_equal:now */}
+                        <Field
+                            name="scheduled_at"
+                            label="Tanggal & Jam Penjemputan"
+                            type="datetime-local"
+                            min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                        />
+                        <TextAreaField name="note" label="Catatan" placeholder="Contoh: sampah di depan pagar..." rows={2} required={false} />
+                    </>
+                )}
+
+                {kind === 'routine' && (
+                    <>
+                        <div className="flex flex-col gap-2">
+                            <span className="text-xs font-semibold text-foreground/80">Hari Rutinan</span>
+                            <div className="flex flex-wrap gap-2">
+                                {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((d, i) => (
+                                    <label key={d} className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-foreground has-[:checked]:border-primary has-[:checked]:bg-accent">
+                                        <input type="checkbox" name="days" value={i} className="accent-primary" />
+                                        {d}
+                                    </label>
+                                ))}
+                            </div>
+                            <span className="text-[11px] text-muted-foreground">Harian = centang semua hari · Mingguan = satu hari · Custom = kombinasi apa saja.</span>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <span className="text-xs font-semibold text-foreground/80">Waktu Penjemputan (boleh lebih dari satu)</span>
+                            <div className="flex flex-wrap gap-2">
+                                {['pagi', 'siang', 'sore'].map(s => (
+                                    <label key={s} className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-foreground capitalize has-[:checked]:border-primary has-[:checked]:bg-accent">
+                                        <input type="checkbox" name="slots" value={s} className="accent-primary" />
+                                        {s}
+                                    </label>
+                                ))}
+                            </div>
+                            <span className="text-[11px] text-muted-foreground">Pagi ~07.00 · Siang ~12.00 · Sore ~16.00</span>
                         </div>
                     </>
                 )}

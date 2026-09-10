@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import {
-    Banknote, CalendarDays, ChevronLeft, CirclePlus,
-    Landmark, Leaf, Plus, TrendingDown, TrendingUp,
+    Banknote, CalendarClock, CalendarDays, ChevronLeft, CirclePlus,
+    Landmark, Leaf, Plus, Repeat, TrendingDown, TrendingUp,
     UserRound, WalletCards
 } from 'lucide-react';
 import { MemberShell } from '@/Components/Koperasi/MemberShell';
@@ -11,7 +11,7 @@ import {
     DataPanel, FilterButton, MetricCard, PageTitle, Status
 } from '@/Components/Koperasi/MemberUI';
 import { FormPopup, StatusPopup } from '@/Components/Koperasi/Popups';
-import { useApi, rp, dfmt } from '@/lib/api';
+import { useApi, api, rp, dfmt } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
@@ -196,11 +196,14 @@ function SukarelaPage() {
 }
 
 // ─── 3. Riwayat Pengambilan Sampah Sub-page ────────────────────
-// Anggota melihat pickup miliknya (backend otomatis filter own) + tombol
-// request jemput ulang di hari yang sama untuk pickup yang sudah selesai.
-function PickupHistoryPage() {
+// Anggota melihat pickup miliknya (backend otomatis filter own) + minta
+// jemput pada tanggal & jam tertentu + atur rutinan harian/mingguan/custom.
+const DAY_NAMES = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
+function PickupHistoryPage({ openForm }) {
     const { user } = useAuth();
     const { data, loading, error } = useApi('/pickups?per_page=50');
+    const { data: schedules, reload: reloadSchedules } = useApi('/pickup-schedules');
     const [reqState, setReqState] = useState('');
     const rows = data ?? [];
 
@@ -231,12 +234,52 @@ function PickupHistoryPage() {
         } finally { setReqState(''); }
     };
 
+    const deleteSchedule = async (s) => {
+        if (!confirm('Hapus rutinan ini?')) return;
+        try {
+            await api(`/pickup-schedules/${s.id}`, { method: 'DELETE' });
+            reloadSchedules();
+        } catch (err) {
+            alert(err.message || 'Gagal menghapus rutinan.');
+        }
+    };
+
     return (
         <div className="flex flex-col gap-6">
             <PageTitle
                 title="Riwayat Pengambilan Sampah"
-                description="Riwayat sampah Anda yang diambil petugas. Jika ada sampah baru menumpuk di hari yang sama, ajukan jemput ulang."
+                description="Riwayat sampah Anda yang diambil petugas. Minta jemput untuk jadwal tertentu, atau atur penjemputan rutin."
+                action={
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => openForm('routine')}
+                            className="flex h-10 items-center gap-2 rounded-xl border border-primary/30 bg-accent px-4 text-xs font-semibold text-primary shadow-sm transition-all hover:bg-accent/70"
+                        >
+                            <Repeat size={16} />
+                            <span>Rutin</span>
+                        </button>
+                        <button
+                            onClick={() => openForm('requestPickup')}
+                            className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
+                        >
+                            <CalendarClock size={16} />
+                            <span>Minta Jemput</span>
+                        </button>
+                    </div>
+                }
             />
+            {(schedules ?? []).length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+                    <Repeat size={16} className="text-emerald-700" />
+                    <span className="text-xs font-bold text-emerald-800">Rutinan aktif:</span>
+                    {(schedules ?? []).map(s => (
+                        <span key={s.id} className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-900 shadow-xs">
+                            {(s.days ?? []).map(d => DAY_NAMES[d]).join(', ')} · {(s.slots ?? []).join('/')}
+                            <button onClick={() => deleteSchedule(s)} className="text-rose-500 hover:text-rose-700" aria-label={`Hapus rutinan ${(s.slots ?? []).join('/')}`}>✕</button>
+                        </span>
+                    ))}
+                </div>
+            )}
             <DataPanel
                 title="Riwayat Pengambilan"
                 headers={['Tanggal', 'Lokasi', 'Status', 'Anda Terima', 'Aksi']}
@@ -390,7 +433,7 @@ function MemberPages({ page, setPage, openForm }) {
         case 'simpanan-sukarela':
             return <SukarelaPage />;
         case 'pengambilan-sampah':
-            return <PickupHistoryPage />;
+            return <PickupHistoryPage openForm={openForm} />;
         case 'laporan':
             return <ReportsPage setPage={setPage} />;
         case 'laporan-shu':
