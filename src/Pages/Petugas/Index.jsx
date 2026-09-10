@@ -105,7 +105,9 @@ function DashboardPage() {
 function PickupPage() {
     // Default "semua": baris atas = prioritas belum diambil, selesai turun ke bawah.
     const [status, setStatus] = useState('semua');
-    const [mineOnly, setMineOnly] = useState(false);
+    // Default hanya tugas yang di-plot ke saya — tiket tanpa penugasan/tugas orang
+    // lain tidak tampil (uncheck untuk melihat semua).
+    const [mineOnly, setMineOnly] = useState(true);
     const { user } = useAuth();
     // 'semua' bukan status di BE — jangan kirim param status (dulu bikin list selalu kosong).
     const statusQ = status === 'semua' ? '' : `status=${status}&`;
