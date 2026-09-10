@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import {
-    Banknote, CalendarClock, CalendarDays, ChevronLeft, CirclePlus,
-    Landmark, Leaf, Plus, TrendingDown, TrendingUp,
+    Banknote, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, CirclePlus,
+    Home, Landmark, Leaf, Plus, Store, TrendingDown, TrendingUp,
     UserRound, WalletCards, X
 } from 'lucide-react';
 import { MemberShell } from '@/Components/Koperasi/MemberShell';
+import ComplaintFormModal from '@/Components/Koperasi/ComplaintFormModal';
+import PriceBoardPage from './PriceBoard';
 import {
     DataPanel, FilterButton, MetricCard, PageTitle, Status
 } from '@/Components/Koperasi/MemberUI';
@@ -15,6 +17,80 @@ import { useApi, api, rp, dfmt } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
+
+// ─── Status Tagihan Wajib (GET /savings/billing-status) ───────
+const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+const monthLabel = (period) => {
+    const [y, m] = (period ?? '').split('-');
+    return `${MONTHS[Number(m) - 1] ?? ''} ${y ?? ''}`.trim() || '-';
+};
+const BILLING_LABEL = { WAJIB: 'Simpanan Wajib', TIPPING: 'Operasional Penjemputan' };
+
+/**
+ * Banner status iuran bulan berjalan — dipakai di Dashboard (dengan CTA) &
+ * panel rincian di halaman Simpanan Wajib (variant="panel").
+ */
+function BillingBanner({ onSeeDetail, variant = 'banner' }) {
+    const { data: billing } = useApi('/savings/billing-status');
+    if (!billing) return null;
+
+    const belumTagih = (billing.detail ?? []).every(d => d.status === 'BELUM_TAGIH');
+
+    if (belumTagih && variant === 'banner') {
+        return (
+            <section className="flex items-start gap-3.5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
+                <CalendarClock size={22} className="mt-0.5 shrink-0 text-slate-500" />
+                <div>
+                    <h3 className="text-sm font-bold text-foreground">Tagihan iuran periode {monthLabel(billing.period)} belum diterbitkan</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Pengurus koperasi belum menerbitkan tagihan rutin bulan ini. Pantau kembali nanti.</p>
+                </div>
+            </section>
+        );
+    }
+
+    if (billing.fully_paid) {
+        return (
+            <section className="flex items-start gap-3.5 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5">
+                <CheckCircle2 size={22} className="mt-0.5 shrink-0 text-emerald-600" />
+                <div>
+                    <h3 className="text-sm font-bold text-emerald-900">Iuran wajib periode {monthLabel(billing.period)} sudah lunas</h3>
+                    <p className="mt-0.5 text-xs text-emerald-800/80">Total {rp(billing.total_monthly)} — terima kasih atas partisipasi aktif Anda.</p>
+                </div>
+            </section>
+        );
+    }
+
+    return (
+        <section className={cn(
+            'rounded-2xl border p-5',
+            variant === 'banner' ? 'border-amber-300 bg-amber-50/90' : 'border-amber-300 bg-amber-50/60'
+        )}>
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                <div className="flex items-start gap-3.5">
+                    <CalendarClock size={22} className="mt-0.5 shrink-0 text-amber-600" />
+                    <div>
+                        <h3 className="text-sm font-bold text-amber-950">Tagihan iuran {monthLabel(billing.period)} menunggu pembayaran</h3>
+                        <p className="mt-1 text-lg font-extrabold text-amber-900">{rp(billing.total_monthly)}</p>
+                        <p className="mt-0.5 text-xs text-amber-900/70">
+                            {(billing.detail ?? []).map(d => `${BILLING_LABEL[d.label] ?? d.label} ${rp(d.billed)}`).join(' + ')}
+                        </p>
+                        <p className="mt-2 text-xs text-amber-900/80">
+                            Pembayaran tunai langsung kepada pengurus/bendahara koperasi, atau titipkan lewat petugas saat jadwal penjemputan sampah.
+                        </p>
+                    </div>
+                </div>
+                {variant === 'banner' && onSeeDetail && (
+                    <button
+                        onClick={onSeeDetail}
+                        className="h-9 shrink-0 rounded-xl bg-amber-600 px-4 text-xs font-semibold text-white shadow-sm hover:bg-amber-700"
+                    >
+                        Lihat Rincian Tagihan
+                    </button>
+                )}
+            </div>
+        </section>
+    );
+}
 
 // ─── Summary Card Component ───────────────────────────────────
 function SummaryCard({ title, amount, note }) {
@@ -38,7 +114,7 @@ function SummaryCard({ title, amount, note }) {
 }
 
 // ─── 1. Dashboard Sub-page ────────────────────────────────────
-function DashboardPage() {
+function DashboardPage({ setPage }) {
     const { user } = useAuth();
     const { data: wallet } = useApi('/wallet/summary');
     const { data: mutations, loading, error } = useApi('/wallet/mutations');
@@ -47,6 +123,9 @@ function DashboardPage() {
 
     return (
         <div className="flex flex-col gap-6">
+            {/* Status iuran bulan berjalan */}
+            <BillingBanner onSeeDetail={() => setPage?.('simpanan-wajib')} />
+
             {/* Member Profile Card */}
             <section className="flex flex-col justify-between gap-5 rounded-2xl border border-border/80 bg-card p-6 shadow-xs sm:flex-row sm:items-center">
                 <div className="flex items-center gap-4">
@@ -103,11 +182,81 @@ function DashboardPage() {
     );
 }
 
+/**
+ * Accordion iuran per kategori — anggota dual-status (rumah + pasar) melihat
+ * dua panel terpisah. Nominal per kategori = tagihan member ÷ jumlah kategori.
+ */
+function CategoryBillingAccordion({ type, address, rows, status }) {
+    const Icon = type === 'rumah' ? Home : Store;
+    const total = rows.reduce((s, r) => s + r.per, 0);
+    const pillCls = status === 'paid'
+        ? 'bg-emerald-100 text-emerald-800'
+        : status === 'unpaid' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600';
+    const pillText = status === 'paid' ? 'Lunas' : status === 'unpaid' ? 'Belum Lunas' : 'Belum Diterbitkan';
+
+    return (
+        <details open className="group rounded-2xl border border-border/80 bg-card shadow-xs">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-5 [&::-webkit-details-marker]:hidden">
+                <div className="flex items-center gap-3.5">
+                    <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-primary">
+                        <Icon size={22} />
+                    </span>
+                    <div>
+                        <h3 className="text-sm font-bold text-foreground">Iuran Kategori {type === 'rumah' ? 'Rumah' : 'Pasar'}</h3>
+                        <p className="line-clamp-1 text-xs text-muted-foreground">{address || 'Alamat belum diisi'}</p>
+                    </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                    <span className={cn('rounded-full px-3 py-0.5 text-[11px] font-bold', pillCls)}>{pillText}</span>
+                    <strong className="text-base font-extrabold text-primary">{rp(total)}</strong>
+                    <ChevronDown size={16} className="text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+                </div>
+            </summary>
+            <div className="border-t border-border/60 px-5 py-4">
+                <div className="flex flex-col divide-y divide-border/60">
+                    {rows.map(r => (
+                        <div key={r.label} className="flex items-center justify-between gap-4 py-2.5">
+                            <div>
+                                <p className="text-xs font-semibold text-foreground">{BILLING_LABEL[r.label] ?? r.label}</p>
+                                <p className="text-[11px] text-muted-foreground">
+                                    {r.label === 'WAJIB' ? 'Menambah simpanan modal Anda' : 'Biaya operasional armada penjemputan'}
+                                </p>
+                            </div>
+                            <strong className="shrink-0 text-sm font-bold text-foreground">{rp(r.per)}</strong>
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-2 flex items-center justify-between rounded-xl bg-slate-50/80 px-4 py-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total per Kategori</span>
+                    <strong className="text-base font-extrabold text-primary">{rp(total)}</strong>
+                </div>
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                    Pembayaran tunai kepada pengurus/bendahara koperasi, atau titipkan lewat petugas saat penjemputan {type}.
+                </p>
+            </div>
+        </details>
+    );
+}
+
 // ─── 2. Simpanan Wajib Sub-page ───────────────────────────────
 function WajibPage() {
+    const { user } = useAuth();
     const { data, loading } = useApi('/savings?label=WAJIB');
+    const { data: billing } = useApi('/savings/billing-status');
     const rows = data ?? [];
     const total = rows.reduce((s, r) => s + Number(r.jumlah), 0);
+
+    const member = user?.member;
+    const cats = member?.categories?.length
+        ? member.categories
+        : (member?.category?.name ? [member.category.name] : []);
+    const multi = cats.length > 1;
+
+    // Nominal per kategori = tagihan member ÷ jumlah kategori (BE menghitung ×kategori).
+    const perCatRows = (billing?.detail ?? []).map(d => ({ ...d, per: Math.round(Number(d.billed) / Math.max(1, cats.length)) }));
+    const belumTagih = (billing?.detail ?? []).every(d => d.status === 'BELUM_TAGIH');
+    const billStatus = !billing || !billing.detail?.length || belumTagih ? 'none' : billing.fully_paid ? 'paid' : 'unpaid';
+    const catAddress = t => (t === 'rumah' ? member?.address_rumah : member?.address_pasar) ?? member?.address ?? '';
 
     return (
         <div className="flex flex-col gap-6">
@@ -116,10 +265,21 @@ function WajibPage() {
                 description="Setoran wajib bulanan yang diakumulasi untuk modal bersama koperasi."
             />
 
+            {/* Rincian tagihan: dual-status tampil accordion per kategori, satuan tampil panel biasa */}
+            {multi ? (
+                <div className="flex flex-col gap-4">
+                    {cats.filter(c => c === 'rumah' || c === 'pasar').map(c => (
+                        <CategoryBillingAccordion key={c} type={c} address={catAddress(c)} rows={perCatRows} status={billStatus} />
+                    ))}
+                </div>
+            ) : (
+                <BillingBanner variant="panel" />
+            )}
+
             <div className="grid gap-5 md:grid-cols-3">
                 <MetricCard icon={<Leaf size={20} />} label="Jumlah Setoran Wajib" value={`${rows.length} setoran`} note="Riwayat penuh di tabel" />
                 <MetricCard icon={<Banknote size={20} />} label="Total Simpanan Wajib" value={rp(total)} note="Akumulasi setoran" tone="green" />
-                <SummaryCard title="Status Simpanan Wajib" amount="Rp 5.000 / bulan" note="Terverifikasi" />
+                <SummaryCard title="Status Simpanan Wajib" amount="Rp 5.000 / bulan / kategori" note="Terverifikasi" />
             </div>
 
             <DataPanel
@@ -293,6 +453,7 @@ function PickupHistoryPage({ openForm }) {
     const { user } = useAuth();
     const { data, loading, error } = useApi('/pickups?per_page=50');
     const [again, setAgain] = useState(null);
+    const [reporting, setReporting] = useState(null);
     const [done, setDone] = useState('');
     const rows = data ?? [];
 
@@ -345,12 +506,21 @@ function PickupHistoryPage({ openForm }) {
                             <span key="loc" className="font-semibold">{locLabel(p.location_type)}</span>,
                             <Status key="s" kind={p.status === 'selesai' ? 'success' : p.status === 'batal' ? 'danger' : 'waiting'}>{p.status}</Status>,
                             <strong key="net" className={cn('font-bold', Number(p.total_net) > 0 ? 'text-emerald-700' : 'text-muted-foreground')}>{Number(p.total_net) > 0 ? rp(p.total_net) : '-'}</strong>,
-                            p.status === 'selesai' && isSameDay(p.completed_at ?? p.scheduled_at)
-                                ? <button key="a" onClick={() => setAgain(p)}
-                                    className="h-8 rounded-xl bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90">
-                                    Jemput Ulang
-                                </button>
-                                : <span key="a" className="text-xs text-muted-foreground">-</span>
+                            <div key="a" className="flex justify-end gap-1.5">
+                                {p.status === 'selesai' && isSameDay(p.completed_at ?? p.scheduled_at) && (
+                                    <button onClick={() => setAgain(p)}
+                                        className="h-8 rounded-xl bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90">
+                                        Jemput Ulang
+                                    </button>
+                                )}
+                                {p.status === 'selesai' && (
+                                    <button onClick={() => setReporting(p)}
+                                        className="h-8 rounded-xl border border-primary px-3 text-xs font-semibold text-primary hover:bg-primary hover:text-white">
+                                        Laporkan
+                                    </button>
+                                )}
+                                {p.status !== 'selesai' && <span className="text-xs text-muted-foreground">-</span>}
+                            </div>
                         ])}
                 footer={`Menampilkan ${rows.length} pengambilan`}
             />
@@ -359,6 +529,17 @@ function PickupHistoryPage({ openForm }) {
                     user={user}
                     onClose={() => setAgain(null)}
                     onDone={msg => { setAgain(null); setDone(msg); }}
+                />
+            )}
+            {reporting && (
+                <ComplaintFormModal
+                    receipt={{
+                        id: reporting.id,
+                        date: dfmt(reporting.completed_at ?? reporting.scheduled_at),
+                        itemsSummary: `${locLabel(reporting.location_type)} · petugas: ${reporting.officer?.name ?? '-'}`,
+                    }}
+                    onClose={() => setReporting(null)}
+                    onSuccess={msg => { setReporting(null); setDone(msg || 'Laporan berhasil dikirim ke pengurus.'); }}
                 />
             )}
             <StatusPopup open={Boolean(done)} title={done} onClose={() => setDone('')} />
@@ -488,13 +669,15 @@ function SaldoReportPage({ setPage }) {
 function MemberPages({ page, setPage, openForm }) {
     switch (page) {
         case 'dashboard':
-            return <DashboardPage />;
+            return <DashboardPage setPage={setPage} />;
         case 'simpanan-wajib':
             return <WajibPage />;
         case 'simpanan-sukarela':
             return <SukarelaPage />;
         case 'pengambilan-sampah':
             return <PickupHistoryPage openForm={openForm} />;
+        case 'harga-sampah':
+            return <PriceBoardPage />;
         case 'laporan':
             return <ReportsPage setPage={setPage} />;
         case 'laporan-shu':
@@ -511,6 +694,7 @@ const memberPageTitles = {
     'simpanan-wajib': 'Simpanan Wajib Anggota',
     'simpanan-sukarela': 'Simpanan Sukarela Anggota',
     'pengambilan-sampah': 'Riwayat Pengambilan Sampah',
+    'harga-sampah': 'Papan Harga Sampah',
     'laporan': 'Pusat Laporan Anggota',
     'laporan-shu': 'Laporan SHU Anggota',
     'laporan-saldo': 'Laporan Saldo Sampah',

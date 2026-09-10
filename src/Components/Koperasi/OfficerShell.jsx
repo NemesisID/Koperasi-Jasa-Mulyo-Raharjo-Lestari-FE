@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth, logout } from '@/lib/auth';
 import {
     Bell, CircleHelp, FileBarChart, LayoutGrid,
-    LogOut, Menu, Scale, Settings, Truck, UserRound, X,
+    LogOut, Menu, Settings, Truck, UserRound, X,
 } from 'lucide-react';
 import { ConfirmPopup } from './Popups';
 
@@ -46,10 +46,6 @@ export function OfficerShell({ children, currentPage, setPage }) {
                 <button onClick={() => nav('dashboard')} className={navBtnCls(is('dashboard'))}>
                     <LayoutGrid size={18} />
                     <span>Dashboard</span>
-                </button>
-                <button onClick={() => nav('timbang-sampah')} className={navBtnCls(is('timbang-sampah'))}>
-                    <Scale size={18} />
-                    <span>Timbang Sampah</span>
                 </button>
                 <button onClick={() => nav('jemput-sampah')} className={navBtnCls(is('jemput-sampah'))}>
                     <Truck size={18} />

@@ -21,14 +21,18 @@ export default function ComplaintFormModal({ receipt, onClose, onSuccess }) {
 
     const submit = async (e) => {
         e.preventDefault();
-        if (!correction.trim()) { setError('Isi nilai koreksi sesuai pengaduan Anda.'); return; }
+        if (!correction.trim()) { setError('Isi detail sesuai pengaduan Anda.'); return; }
         setError('');
         setSubmitting(true);
 
         try {
             const pickupId = Number(receipt.pickup_id || receipt.id);
-            const issueType = reason === 'Berat salah' ? 'berat_salah' : 'kategori_salah';
-            const description = `${reason}: ${correction}`;
+            const issueType = reason === 'Berat salah' ? 'berat_salah'
+                : reason === 'Kategori salah' ? 'kategori_salah'
+                : 'lainnya'; // Keluhan petugas → 'lainnya' (tidak ada tipe khusus di BE)
+            const description = reason === 'Keluhan Petugas'
+                ? `Keluhan petugas: ${correction}`
+                : `${reason}: ${correction}`;
 
             let res;
             if (photoFile) {
@@ -62,7 +66,7 @@ export default function ComplaintFormModal({ receipt, onClose, onSuccess }) {
             <div className="flex items-center justify-between px-6 py-4 bg-accent/60 border-b border-border/60">
                 <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
                     <MessageSquareWarning size={20} />
-                    <span>Ajukan Komplain Nota</span>
+                    <span>Laporkan Masalah Pengambilan</span>
                 </h2>
                 <button type="button" onClick={onClose} aria-label="Tutup"
                     className="rounded-lg p-1 text-muted-foreground hover:bg-black/5 hover:text-foreground transition-colors">
@@ -79,16 +83,16 @@ export default function ComplaintFormModal({ receipt, onClose, onSuccess }) {
 
                 <div className="flex flex-col gap-1.5">
                     <span className="text-xs font-semibold text-foreground/80">Alasan Komplain</span>
-                    <div className="grid grid-cols-2 gap-3">
-                        {['Berat salah', 'Kategori salah'].map(r => (
+                    <div className="grid grid-cols-3 gap-3">
+                        {['Berat salah', 'Kategori salah', 'Keluhan Petugas'].map(r => (
                             <button
                                 key={r}
                                 type="button"
                                 role="radio"
                                 aria-checked={reason === r}
-                                onClick={() => setReason(r)}
+                                onClick={() => { setReason(r); setCorrection(''); }}
                                 className={cn(
-                                    'h-10 rounded-xl border text-xs font-semibold transition-all',
+                                    'h-10 rounded-xl border px-2 text-xs font-semibold transition-all',
                                     reason === r
                                         ? 'border-primary bg-primary text-white shadow-sm'
                                         : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-primary'
@@ -101,35 +105,52 @@ export default function ComplaintFormModal({ receipt, onClose, onSuccess }) {
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                    <label htmlFor="correction" className="text-xs font-semibold text-foreground/80">
-                        {reason === 'Berat salah' ? 'Berat Seharusnya (kg)' : 'Kategori Seharusnya'}
-                    </label>
-                    {reason === 'Berat salah' ? (
-                        <input
-                            id="correction"
-                            type="number"
-                            inputMode="decimal"
-                            min="0"
-                            step="0.1"
-                            value={correction}
-                            onChange={e => setCorrection(e.target.value)}
-                            placeholder="Contoh: 12.5"
-                            className={inputCls}
-                        />
+                    {reason === 'Keluhan Petugas' ? (
+                        <>
+                            <label htmlFor="correction" className="text-xs font-semibold text-foreground/80">Ceritakan Keluhan Anda</label>
+                            <textarea
+                                id="correction"
+                                rows={3}
+                                value={correction}
+                                onChange={e => setCorrection(e.target.value)}
+                                placeholder="Contoh: petugas datang tidak sesuai jadwal, timbangan tidak akurat..."
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-sm text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15 resize-none"
+                            />
+                            <span className="text-[11px] text-muted-foreground">Aduan diteruskan ke pengurus koperasi untuk ditindaklanjuti.</span>
+                        </>
                     ) : (
-                        <select
-                            id="correction"
-                            value={correction}
-                            onChange={e => setCorrection(e.target.value)}
-                            className={inputCls}
-                        >
-                            <option value="">Pilih kategori...</option>
-                            <option>Botol PET Bening</option>
-                            <option>Plastik Kresek</option>
-                            <option>Kardus / Karton</option>
-                            <option>Kaleng Aluminium</option>
-                            <option>Besi Tua</option>
-                        </select>
+                        <>
+                            <label htmlFor="correction" className="text-xs font-semibold text-foreground/80">
+                                {reason === 'Berat salah' ? 'Berat Seharusnya (kg)' : 'Kategori Seharusnya'}
+                            </label>
+                            {reason === 'Berat salah' ? (
+                                <input
+                                    id="correction"
+                                    type="number"
+                                    inputMode="decimal"
+                                    min="0"
+                                    step="0.1"
+                                    value={correction}
+                                    onChange={e => setCorrection(e.target.value)}
+                                    placeholder="Contoh: 12.5"
+                                    className={inputCls}
+                                />
+                            ) : (
+                                <select
+                                    id="correction"
+                                    value={correction}
+                                    onChange={e => setCorrection(e.target.value)}
+                                    className={inputCls}
+                                >
+                                    <option value="">Pilih kategori...</option>
+                                    <option>Botol PET Bening</option>
+                                    <option>Plastik Kresek</option>
+                                    <option>Kardus / Karton</option>
+                                    <option>Kaleng Aluminium</option>
+                                    <option>Besi Tua</option>
+                                </select>
+                            )}
+                        </>
                     )}
                 </div>
 

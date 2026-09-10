@@ -69,7 +69,20 @@ export default function PickupMonitorPage() {
     const [status, setStatus] = useState('menunggu');
     const [search, setSearch] = useState('');
     const { data, meta, loading, error, reload } = useApi(`/pickups?status=${status}&per_page=25`);
+    // Daftar petugas untuk plotting penugasan per tiket.
+    const { data: officers } = useApi('/users?role=petugas&per_page=100');
     const [detail, setDetail] = useState(null);
+    const [assigning, setAssigning] = useState(null); // id tiket yang sedang di-save
+
+    const assignOfficer = async (pickupId, officerId) => {
+        setAssigning(pickupId);
+        try {
+            await api(`/pickups/${pickupId}/assign`, { method: 'PATCH', body: { officer_id: officerId || null } });
+            reload();
+        } catch (err) {
+            alert(err.message || 'Gagal menugaskan petugas.');
+        } finally { setAssigning(null); }
+    };
 
     const rows = (data ?? []).filter(p =>
         (p.member?.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
@@ -119,7 +132,7 @@ export default function PickupMonitorPage() {
                                 <th className="px-6 py-3.5">Alamat</th>
                                 <th className="px-6 py-3.5">Jadwal</th>
                                 <th className="px-6 py-3.5">Lokasi</th>
-                                <th className="px-6 py-3.5">Petugas</th>
+                                <th className="px-6 py-3.5">Plotting Petugas</th>
                                 <th className="px-6 py-3.5">Status</th>
                                 <th className="px-6 py-3.5 text-right">Aksi</th>
                             </tr>
@@ -138,7 +151,21 @@ export default function PickupMonitorPage() {
                                     </td>
                                     <td className="px-6 py-4 text-muted-foreground">{dfmt(p.scheduled_at)}</td>
                                     <td className="px-6 py-4">{p.location_type === 'jemput_rumah' ? 'Jemput Rumah' : p.location_type === 'jemput_pasar' ? 'Jemput Pasar' : 'Gudang'}</td>
-                                    <td className="px-6 py-4 text-muted-foreground">{p.officer?.name ?? '-'}</td>
+                                    <td className="px-6 py-4">
+                                        {/* Plotting petugas ke tiket ini */}
+                                        <select
+                                            value={p.officer?.id ?? ''}
+                                            onChange={e => assignOfficer(p.id, e.target.value)}
+                                            disabled={assigning === p.id}
+                                            aria-label={`Tugaskan petugas untuk ${p.member?.name ?? `tiket #${p.id}`}`}
+                                            className="h-9 rounded-xl border border-border bg-card px-2.5 text-xs font-medium text-foreground focus:bg-white disabled:opacity-50"
+                                        >
+                                            <option value="">Belum ditugaskan</option>
+                                            {(officers ?? []).map(o => (
+                                                <option key={o.id} value={o.id}>{o.name}</option>
+                                            ))}
+                                        </select>
+                                    </td>
                                     <td className="px-6 py-4">
                                         <span className={cn('rounded-full px-3 py-0.5 text-xs font-semibold', STATUS_STYLE[p.status])}>{p.status}</span>
                                     </td>

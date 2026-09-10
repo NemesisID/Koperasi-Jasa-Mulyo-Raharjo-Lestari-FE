@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api } from '@/lib/api';
+import { api, rp } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import {
     ArrowDownToLine, CalendarClock, Check, Eye, EyeOff, Leaf, LogOut,
@@ -10,6 +10,8 @@ import {
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
 // ─── Native modal overlay with animation ──────────────────────
+// Selalu di tengah LAYAR (fixed + center), tinggi maksimal 90vh dengan scroll
+// internal supaya form panjang tetap terjangkau.
 export function Modal({ open, onClose, children }) {
     if (!open) return null;
     return (
@@ -18,7 +20,7 @@ export function Modal({ open, onClose, children }) {
             onClick={onClose}
         >
             <div
-                className="modal-content-anim w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+                className="modal-content-anim max-h-[90vh] w-full max-w-lg overflow-y-auto custom-scrollbar rounded-2xl border border-border bg-card shadow-2xl"
                 onClick={e => e.stopPropagation()}
             >
                 {children}
@@ -83,6 +85,24 @@ function SelectField({ name, label, options, required = true }) {
     );
 }
 
+// Dropdown kategori keuangan dari API (income & expense) — value = category_id.
+function FinCategorySelect({ cats, label }) {
+    return (
+        <div className="flex flex-col gap-1.5">
+            <label htmlFor="fin-category" className="text-xs font-semibold text-foreground/80">{label}</label>
+            <select
+                required
+                id="fin-category"
+                name="category_id"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+            >
+                {cats === undefined && <option value="">Memuat kategori…</option>}
+                {(cats ?? []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+        </div>
+    );
+}
+
 function TextAreaField({ name, label, placeholder, rows = 3, required = true }) {
     return (
         <div className="flex flex-col gap-1.5">
@@ -133,14 +153,6 @@ const configs = {
         submitCls: 'bg-emerald-700 hover:bg-emerald-800 text-white',
         bg: 'bg-[#6bf1c2] text-emerald-900 border-b border-emerald-300',
     },
-    voluntary: {
-        title: 'Input Simpanan Sukarela',
-        icon: WalletCards,
-        tone: 'text-primary',
-        submit: 'Simpan Data',
-        submitCls: 'bg-primary hover:bg-primary/90 text-white',
-        bg: 'bg-accent/60 border-b border-border/60',
-    },
     distribution: {
         title: 'Distribusi SHU Baru',
         icon: WalletCards,
@@ -163,17 +175,36 @@ export function FormPopup({ kind, onClose, onSuccess }) {
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
     const [showPw, setShowPw] = useState(false);
-    const [incomeCats, setIncomeCats] = useState(null);
+    // Kategori keuangan dimuat sekali untuk dropdown income/expense (termasuk Beli Sampah Anggota).
+    const [finCats, setFinCats] = useState(null);
+    // SHU otomatis: laba bersih tahun berjalan + jumlah anggota aktif.
+    const [shuAuto, setShuAuto] = useState(null);
+    // Kategori member terpilih (rumah/pasar) — menentukan simpanan pokok otomatis.
+    const [memberTypes, setMemberTypes] = useState([]);
     const { user } = useAuth();
     if (!kind || !configs[kind]) return null;
     const { title, icon: Icon, tone, submit, submitCls, bg } = configs[kind];
+    const shuYear = new Date().getFullYear();
 
-    // Kategori pemasukan dimuat sekali untuk dropdown labeling cashflow (termasuk Penjualan Sampah).
-    if (kind === 'income' && incomeCats === null) {
-        setIncomeCats(undefined);
-        api('/finance-categories?type=income')
-            .then(json => setIncomeCats(json?.data ?? []))
-            .catch(() => setIncomeCats([]));
+    if ((kind === 'income' || kind === 'expense') && finCats === null) {
+        setFinCats(undefined);
+        api(`/finance-categories?type=${kind}`)
+            .then(json => setFinCats(json?.data ?? []))
+            .catch(() => setFinCats([]));
+    }
+
+    // Data otomatis distribusi SHU: laba bersih (reports/financial) + jumlah anggota aktif.
+    if (kind === 'distribution' && shuAuto === null) {
+        setShuAuto(undefined);
+        const start = `${shuYear}-01-01`;
+        const end = new Date().toISOString().slice(0, 10);
+        Promise.all([
+            api(`/reports/financial?period_start=${start}&period_end=${end}`).catch(() => null),
+            api('/members?status=aktif&per_page=1').catch(() => null),
+        ]).then(([fin, members]) => setShuAuto({
+            netProfit: Number(fin?.net_profit ?? 0),
+            recipients: members?.meta?.total ?? 0,
+        }));
     }
 
     // ponytail: member_id diketik manual — ganti search-select member kalau sering dipakai.
@@ -196,27 +227,14 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                     },
                 });
             } else if (kind === 'expense') {
-                const cats = (await api('/finance-categories?type=expense')).data;
-                const cat = cats.find(c => c.name === fd.get('category')) ?? cats.find(c => c.group_type === 'operasional');
                 res = await api('/transactions', {
                     method: 'POST',
                     body: {
-                        category_id: cat?.id,
+                        category_id: Number(fd.get('category_id')) || null,
                         type: 'expense',
                         amount: Number(String(fd.get('amount')).replace(/[^\d]/g, '')),
                         description: fd.get('description') || null,
                         payment_method: 'tunai',
-                    },
-                });
-            } else if (kind === 'voluntary') {
-                res = await api('/savings/pay', {
-                    method: 'POST',
-                    body: {
-                        member_id: Number(fd.get('member')),
-                        label: 'SUKARELA',
-                        jumlah: Number(String(fd.get('amount')).replace(/[^\d]/g, '')),
-                        metode: 'tunai',
-                        catatan: fd.get('note') || null,
                     },
                 });
             } else if (kind === 'waste') {
@@ -312,18 +330,7 @@ export function FormPopup({ kind, onClose, onSuccess }) {
             <form onSubmit={handleSubmit} className="flex flex-col gap-4 p-6 bg-card">
                 {kind === 'income' && (
                     <>
-                        <div className="flex flex-col gap-1.5">
-                            <label htmlFor="income-category" className="text-xs font-semibold text-foreground/80">Kategori Pemasukan</label>
-                            <select
-                                required
-                                id="income-category"
-                                name="category_id"
-                                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
-                            >
-                                {incomeCats === undefined && <option value="">Memuat kategori…</option>}
-                                {(incomeCats ?? []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
-                        </div>
+                        <FinCategorySelect cats={finCats} label="Kategori Pemasukan" />
                         <MoneyField name="amount" label="Jumlah Nominal" />
                         <TextAreaField name="note" label="Keterangan" placeholder="Catatan tambahan..." />
                     </>
@@ -331,7 +338,7 @@ export function FormPopup({ kind, onClose, onSuccess }) {
 
                 {kind === 'expense' && (
                     <>
-                        <SelectField name="category" label="Kategori Pengeluaran" options={['Logistik', 'Operasional', 'Gaji', 'Maintenance', 'Lainnya']} />
+                        <FinCategorySelect cats={finCats} label="Kategori Pengeluaran" />
                         <MoneyField name="amount" label="Jumlah Nominal" />
                         <TextAreaField name="description" label="Keterangan Pengeluaran" placeholder="Tujuan / rincian pengeluaran..." />
                     </>
@@ -349,7 +356,7 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                                 <div className="flex gap-2">
                                     {['rumah', 'pasar'].map(c => (
                                         <label key={c} className="flex flex-1 cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-xs font-semibold capitalize text-foreground has-[:checked]:border-primary has-[:checked]:bg-accent">
-                                            <input type="checkbox" name="member_types" value={c} className="accent-primary" />
+                                            <input type="checkbox" name="member_types" value={c} className="accent-primary" onChange={e => setMemberTypes(t => e.target.checked ? [...new Set([...t, c])] : t.filter(x => x !== c))} checked={memberTypes.includes(c)} />
                                             {c}
                                         </label>
                                     ))}
@@ -362,7 +369,7 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                         <div className="grid gap-3 sm:grid-cols-2">
                             <div className="rounded-xl bg-[#eef3fc] px-4 py-3 flex items-center justify-between">
                                 <span className="text-xs font-semibold text-primary">Simpanan Pokok (otomatis)</span>
-                                <strong className="text-sm font-bold text-primary">Rp 50.000</strong>
+                                <strong className="text-sm font-bold text-primary">{rp(50000 * Math.max(1, memberTypes.length))}</strong>
                             </div>
                             <div className="flex flex-col gap-1.5">
                                 <label htmlFor="password" className="text-xs font-semibold text-foreground/80">Password</label>
@@ -444,20 +451,33 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                     </>
                 )}
 
-                {kind === 'voluntary' && (
-                    <>
-                        <Field name="member" label="Nama Anggota / ID" placeholder="Nama atau No. ID" />
-                        <MoneyField name="amount" label="Jumlah Setoran Sukarela" />
-                        <Field name="date" label="Tanggal Setoran" type="date" />
-                        <TextAreaField name="note" label="Catatan" placeholder="Catatan transaksi..." rows={2} required={false} />
-                    </>
-                )}
-
                 {kind === 'distribution' && (
                     <>
-                        <Field name="year" label="Tahun Buku" defaultValue="2023" />
-                        <MoneyField name="totalShu" label="Total SHU Dibagikan" defaultValue="108.900.000" />
-                        <Field name="recipientCount" label="Jumlah Penerima" defaultValue="450 Anggota" />
+                        {/* Semua nilai otomatis: tahun berjalan, laba bersih, penerima = anggota aktif */}
+                        <input type="hidden" name="year" value={shuYear} />
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-xl bg-[#eef3fc] px-4 py-3">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Tahun Buku</p>
+                                <p className="mt-0.5 text-sm font-bold text-primary">{shuYear} <span className="text-[10px] font-medium text-muted-foreground">(otomatis)</span></p>
+                            </div>
+                            <div className="rounded-xl bg-[#eef3fc] px-4 py-3">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Jumlah Penerima</p>
+                                <p className="mt-0.5 text-sm font-bold text-primary">
+                                    {shuAuto === undefined ? 'Memuat…' : `${shuAuto.recipients} anggota`}
+                                    <span className="text-[10px] font-medium text-muted-foreground"> (otomatis)</span>
+                                </p>
+                            </div>
+                        </div>
+                        {shuAuto === undefined ? (
+                            <p className="text-xs text-muted-foreground">Menghitung laba bersih tahun berjalan…</p>
+                        ) : (
+                            <MoneyField
+                                name="totalShu"
+                                label="Total SHU Dibagikan"
+                                defaultValue={String(Math.round(shuAuto.netProfit).toLocaleString('id-ID'))}
+                            />
+                        )}
+                        <p className="text-xs text-muted-foreground">Nominal terisi otomatis dari laba bersih {shuYear} dan dibagi ke anggota aktif sesuai porsi masing-masing.</p>
                     </>
                 )}
 

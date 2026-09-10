@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import { useAuth } from '@/lib/auth';
 import {
-    CalendarDays, Check, ChevronRight, Clock3, MapPin, Scale
+    CalendarDays, Check, ChevronRight, Clock3, MapPin, Pencil, Scale
 } from 'lucide-react';
 import { OfficerShell } from '@/Components/Koperasi/OfficerShell';
 import { StatusPopup } from '@/Components/Koperasi/Popups';
@@ -103,9 +103,14 @@ function DashboardPage() {
 
 // ─── 2. Pickup Sub-page ───────────────────────────────────────
 function PickupPage() {
-    const [status, setStatus] = useState('menunggu');
+    // Default "semua": baris atas = prioritas belum diambil, selesai turun ke bawah.
+    const [status, setStatus] = useState('semua');
     const { data, loading, error, reload } = useApi(`/pickups?status=${status}&per_page=25`);
-    const rows = data ?? [];
+    // Prioritas: yang BELUM diambil selalu di atas; tiket selesai (sudah
+    // ditimbang) otomatis turun ke bawah. Batal paling bawah.
+    const priority = { menunggu: 0, proses: 1, selesai: 2, batal: 3 };
+    const rows = [...(data ?? [])].sort((a, b) =>
+        (priority[a.status] ?? 9) - (priority[b.status] ?? 9));
 
     // Step 2: klik aksi → buka tampilan timbangan untuk TIKET ini.
     // (Bug "minta jemput nyangkut": dulu kirim p.member → WeighingForm bikin
@@ -132,6 +137,7 @@ function PickupPage() {
                             onChange={e => setStatus(e.target.value)}
                             className="bg-transparent text-xs font-bold text-foreground outline-none"
                         >
+                            <option value="semua">Semua</option>
                             <option value="menunggu">Menunggu</option>
                             <option value="selesai">Selesai</option>
                             <option value="batal">Batal</option>
@@ -165,6 +171,12 @@ function PickupPage() {
                                     Jadwal: {dfmt(p.scheduled_at)}
                                     {p.completed_at ? ` · Selesai: ${dfmt(p.completed_at)}` : ''}
                                 </p>
+                                {/* Alamat jemput mengikuti lokasi tiket (rumah/pasar). */}
+                                {(p.location_type === 'jemput_rumah' || p.location_type === 'jemput_pasar') && (
+                                    <p className="mt-0.5 text-xs font-medium text-slate-600">
+                                        {p.location_type === 'jemput_pasar' ? p.member?.address_pasar : p.member?.address_rumah}
+                                    </p>
+                                )}
                                 <div className="mt-2.5 flex gap-2">
                                     <span className={cn('rounded-full px-3 py-0.5 text-xs font-semibold', STATUS_STYLE[p.status])}>
                                         {p.status}
@@ -190,13 +202,23 @@ function PickupPage() {
                                 <strong className="text-lg font-bold text-primary">{Number(p.total_gross ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg</strong>
                                 <p className="text-[11px] text-muted-foreground">Bersih anggota: {rp(p.total_net)}</p>
                             </div>
-                            {p.status === 'menunggu' && p.member && (
-                                <button
-                                    onClick={() => setWeighingTicket(p)}
-                                    className="flex h-11 items-center gap-2 rounded-xl bg-primary px-5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
-                                >
-                                    <Scale size={16} /> Timbang Sekarang
-                                </button>
+                            {p.member && p.status !== 'batal' && (
+                                p.status === 'menunggu' ? (
+                                    <button
+                                        onClick={() => setWeighingTicket(p)}
+                                        className="flex h-11 items-center gap-2 rounded-xl bg-primary px-5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
+                                    >
+                                        <Scale size={16} /> Timbang Sekarang
+                                    </button>
+                                ) : (
+                                    // Sudah ditimbang: buka ulang untuk koreksi (jurnal lama otomatis diganti BE).
+                                    <button
+                                        onClick={() => setWeighingTicket(p)}
+                                        className="flex h-11 items-center gap-2 rounded-xl border border-primary px-5 text-xs font-semibold text-primary transition-all hover:bg-primary hover:text-white"
+                                    >
+                                        <Pencil size={16} /> Edit Timbangan
+                                    </button>
+                                )
                             )}
                         </div>
                     </article>
@@ -306,7 +328,6 @@ function ReportPage({ showStatus }) {
 
 // ─── Router Component ─────────────────────────────────────────
 function OfficerPages({ page, showStatus }) {
-    if (page === 'timbang-sampah') return <WeighingFormPage />;
     if (page === 'jemput-sampah') return <PickupPage />;
     if (page === 'laporan') return <ReportPage showStatus={showStatus} />;
     return <DashboardPage />;
@@ -314,7 +335,6 @@ function OfficerPages({ page, showStatus }) {
 
 const officerPageTitles = {
     'dashboard': 'Dashboard Petugas',
-    'timbang-sampah': 'Timbang Sampah',
     'jemput-sampah': 'Jemput Sampah',
     'laporan': 'Laporan Penjemputan',
 };

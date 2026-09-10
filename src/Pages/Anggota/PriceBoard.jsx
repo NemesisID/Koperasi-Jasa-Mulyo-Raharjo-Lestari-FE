@@ -1,14 +1,20 @@
 // FE-4.2 — Papan info harga sampah terkini untuk anggota: filter kategori,
 // penanda fluktuasi naik/turun, info potongan harga jemput armada.
-import { useState } from 'react';
+// Auto-refresh tiap 60 detik agar harga tampil terkini (realtime).
+import { useEffect, useState } from 'react';
 import { Info, Recycle, TrendingDown, TrendingUp } from 'lucide-react';
 import { useApi, rp } from '@/lib/api';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
 export default function PriceBoardPage() {
-    const { data, loading, error } = useApi('/trash-categories/board');
+    const { data, loading, error, reload } = useApi('/trash-categories/board');
     const [filter, setFilter] = useState('Semua');
+
+    useEffect(() => {
+        const timer = setInterval(reload, 60000);
+        return () => clearInterval(timer);
+    }, [reload]);
 
     const items = data ?? [];
     const categories = ['Semua', ...new Set(items.map(p => p.type || 'Lainnya'))];
@@ -18,7 +24,7 @@ export default function PriceBoardPage() {
         <div className="flex flex-col gap-6">
             <div>
                 <h1 className="text-2xl font-bold text-foreground md:text-3xl">Papan Harga Sampah</h1>
-                <p className="mt-1 text-sm text-muted-foreground">Harga terkini diperbarui harian oleh Bendahara koperasi.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Harga terkini dari koperasi — dimuat ulang otomatis setiap menit.</p>
             </div>
 
             {/* Info potongan jemput */}

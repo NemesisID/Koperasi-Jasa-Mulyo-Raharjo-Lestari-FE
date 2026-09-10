@@ -3,7 +3,7 @@
 // Harga Bersih (auto 80% harga jual = jual − potongan koperasi 20%).
 import { useState } from 'react';
 import {
-    CheckCircle2, History, Pencil, Plus, Recycle, Save, Tag, TrendingDown, TrendingUp, X,
+    CheckCircle2, History, Pencil, Plus, Recycle, Save, Search, Tag, TrendingDown, TrendingUp, X,
 } from 'lucide-react';
 import { PageHeader, StatCard } from '@/Components/Koperasi/ManagerUI';
 import { Modal } from '@/Components/Koperasi/Popups';
@@ -185,12 +185,17 @@ export default function TrashPricesPage() {
     const { showStatus } = usePopup();
     const { data, loading, error, reload } = useApi('/trash-categories');
     const [group, setGroup] = useState('semua');
+    const [search, setSearch] = useState('');
     const [editing, setEditing] = useState(null);   // null | {} (baru) | category
     const [historyOf, setHistoryOf] = useState(null);
 
     const catalog = data ?? [];
     const active = MAIN_GROUPS.find(g => g.key === group) ?? MAIN_GROUPS[0];
-    const filtered = catalog.filter(active.match);
+    // Filter: grup (organik/campur/anorganik) + pencarian nama/jenis.
+    const q = search.trim().toLowerCase();
+    const filtered = catalog
+        .filter(active.match)
+        .filter(c => !q || c.name.toLowerCase().includes(q) || (c.type ?? '').includes(q));
     const [savingId, setSavingId] = useState(null);
     const [drafts, setDrafts] = useState({}); // id → { price_unsorted, price_sell }
 
@@ -201,6 +206,12 @@ export default function TrashPricesPage() {
         ...prev,
         [id]: { ...(prev[id] ?? base), [k]: v },
     }));
+    // Baris "berubah": ada draft & nominalnya beda dari tersimpan.
+    const isDirty = (c) => {
+        const d = drafts[c.id];
+        return Boolean(d) && (Number(d.price_unsorted) !== Number(c.price_unsorted) || Number(d.price_sell) !== Number(c.price_sell));
+    };
+    const dirtyList = catalog.filter(isDirty);
 
     const savePrice = async (c) => {
         const d = draftOf(c);
@@ -216,6 +227,10 @@ export default function TrashPricesPage() {
         } catch (err) {
             showStatus('Gagal Menyimpan', err.message || 'Gagal menyimpan harga.');
         } finally { setSavingId(null); }
+    };
+
+    const saveAll = async () => {
+        for (const c of dirtyList) await savePrice(c);
     };
 
     return (
@@ -241,7 +256,7 @@ export default function TrashPricesPage() {
             </div>
 
             <section className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
-                <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center border-b border-border/60">
+                <div className="flex flex-col justify-between gap-4 p-5 border-b border-border/60 lg:flex-row lg:items-center">
                     <h2 className="text-lg font-bold text-foreground">Katalog Harga Sampah</h2>
                     <div className="flex flex-wrap items-center gap-2">
                         {MAIN_GROUPS.map(g => (
@@ -258,6 +273,20 @@ export default function TrashPricesPage() {
                                 {g.label}
                             </button>
                         ))}
+                        <div className="relative w-full sm:w-52">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari sampah…"
+                                className="h-9 w-full rounded-xl border border-border bg-slate-50/50 pl-9 pr-3 text-xs focus:bg-white" />
+                        </div>
+                        {dirtyList.length > 0 && (
+                            <button
+                                onClick={saveAll}
+                                disabled={savingId !== null}
+                                className="flex h-9 items-center gap-1.5 rounded-xl bg-amber-500 px-3.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600 disabled:opacity-60"
+                            >
+                                <Save size={14} /> Simpan Semua ({dirtyList.length})
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -281,9 +310,16 @@ export default function TrashPricesPage() {
                                 ? <tr><td colSpan={5} className="px-6 py-4 text-muted-foreground">Belum ada kategori di grup ini.</td></tr>
                             : filtered.map(c => {
                                 const d = draftOf(c);
+                                const dirty = isDirty(c);
                                 const priceMember = Math.round(Number(d.price_sell) * 0.8);
+                                const cellInputCls = cn(
+                                    'h-9 w-32 rounded-xl border bg-slate-50/50 px-3 text-xs font-bold text-foreground focus:bg-white focus:ring-2',
+                                    dirty
+                                        ? 'border-amber-400 ring-amber-200 focus:border-amber-500 focus:ring-amber-200'
+                                        : 'border-border focus:border-primary focus:ring-primary/15'
+                                );
                                 return (
-                                    <tr key={c.id} className="hover:bg-secondary/40 transition-colors">
+                                    <tr key={c.id} className={cn('transition-colors', dirty ? 'bg-amber-50/60' : 'hover:bg-secondary/40')}>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 <span className="flex size-9 items-center justify-center rounded-xl bg-blue-100 text-primary">
@@ -301,8 +337,9 @@ export default function TrashPricesPage() {
                                                 min="0"
                                                 value={d.price_unsorted}
                                                 onChange={e => setDraft(c.id, 'price_unsorted', e.target.value, d)}
+                                                onKeyDown={e => e.key === 'Enter' && dirty && savePrice(c)}
                                                 aria-label={`Harga kotor ${c.name}`}
-                                                className="h-9 w-32 rounded-xl border border-border bg-slate-50/50 px-3 text-xs font-bold text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+                                                className={cellInputCls}
                                             />
                                         </td>
                                         <td className="px-6 py-4">
@@ -311,8 +348,9 @@ export default function TrashPricesPage() {
                                                 min="0"
                                                 value={d.price_sell}
                                                 onChange={e => setDraft(c.id, 'price_sell', e.target.value, d)}
+                                                onKeyDown={e => e.key === 'Enter' && dirty && savePrice(c)}
                                                 aria-label={`Harga jual ${c.name}`}
-                                                className="h-9 w-32 rounded-xl border border-border bg-slate-50/50 px-3 text-xs font-bold text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+                                                className={cellInputCls}
                                             />
                                         </td>
                                         <td className="px-6 py-4">
@@ -324,9 +362,9 @@ export default function TrashPricesPage() {
                                             <div className="flex items-center gap-1.5">
                                                 <button
                                                     onClick={() => savePrice(c)}
-                                                    disabled={savingId === c.id}
-                                                    title="Simpan harga"
-                                                    className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-white hover:bg-primary/90 disabled:opacity-50"
+                                                    disabled={!dirty || savingId === c.id}
+                                                    title={dirty ? 'Simpan harga' : 'Tidak ada perubahan'}
+                                                    className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-white hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed"
                                                 >
                                                     <Save size={14} />
                                                 </button>

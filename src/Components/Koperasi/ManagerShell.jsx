@@ -98,7 +98,6 @@ export function ManagerShell({ children, currentPage, setPage }) {
                             {[
                                 ['Pokok', 'simpanan-pokok'],
                                 ['Wajib', 'simpanan-wajib'],
-                                ['Sukarela', 'simpanan-sukarela'],
                             ].map(([label, key]) => (
                                 <button
                                     key={key}

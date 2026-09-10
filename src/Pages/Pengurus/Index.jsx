@@ -283,15 +283,12 @@ function RecentTransactions() {
 
 // ─── 2. Manajemen Harga Sampah → TrashPrices.jsx (3 nominal, revisi fase-3) ──
 
-// ─── 3. Simpanan (per label) Sub-page ─────────────────────────
+// ─── 3. Simpanan Pokok Sub-page ───────────────────────────────
 const LABEL_TITLES = {
     POKOK: ['Manajemen Simpanan Pokok', 'Kelola dana keanggotaan awal untuk kestabilan koperasi kita.'],
-    WAJIB: ['Manajemen Simpanan Wajib', 'Setoran wajib bulanan yang diakumulasi untuk modal bersama koperasi.'],
-    SUKARELA: ['Manajemen Simpanan Sukarela', 'Kelola dana simpanan sukarela anggota dengan transparansi penuh.'],
 };
 
 function SavingsByLabelPage({ label }) {
-    const { openForm } = usePopup();
     const { data, meta, loading } = useApi(`/savings?label=${label}&per_page=15`);
     const [search, setSearch] = useState('');
     const rows = (data ?? []).filter(s => (s.user?.name ?? '').toLowerCase().includes(search.toLowerCase()));
@@ -301,15 +298,6 @@ function SavingsByLabelPage({ label }) {
             <PageHeader
                 title={LABEL_TITLES[label][0]}
                 desc={LABEL_TITLES[label][1]}
-                action={
-                    <button
-                        onClick={() => openForm('voluntary')}
-                        className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
-                    >
-                        <Plus size={16} />
-                        <span>Catat Simpanan</span>
-                    </button>
-                }
             />
 
             <section className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
@@ -432,6 +420,24 @@ function ShuPage() {
 }
 
 // ─── 5. Pendapatan / Pengeluaran Page ─────────────────────────
+// Rekap pengeluaran tahun berjalan + total beli sampah dari anggota
+// (expense otomatis tercatat setiap petugas menimbang sampah anggota).
+function ExpenseSummaryRow() {
+    const now = new Date();
+    const start = `${now.getFullYear()}-01-01`;
+    const end = now.toISOString().slice(0, 10);
+    const { data: fin } = useApi(`/reports/financial?period_start=${start}&period_end=${end}`);
+    const beliSampah = (fin?.expense ?? []).find(r => r.category === 'Beli Sampah Anggota')?.total ?? 0;
+
+    return (
+        <div className="grid gap-5 md:grid-cols-3">
+            <StatCard label="Total Pengeluaran" value={rp(fin?.total_expense)} note={`Periode ${now.getFullYear()}`} tone="red" />
+            <StatCard label="Beli Sampah Anggota" value={rp(beliSampah)} note="Otomatis per timbangan" tone="blue" />
+            <StatCard label="Pengeluaran Operasional" value={rp((fin?.total_expense ?? 0) - beliSampah)} note="Di luar beli sampah" tone="gold" />
+        </div>
+    );
+}
+
 function TransactionPage({ type, title, desc }) {
     const { openForm } = usePopup();
     const { data, meta, loading } = useApi(`/transactions?type=${type}&per_page=15`);
@@ -442,6 +448,7 @@ function TransactionPage({ type, title, desc }) {
 
     return (
         <div className="flex flex-col gap-6">
+            {type === 'expense' && <ExpenseSummaryRow />}
             <PageHeader
                 title={title}
                 desc={desc}
@@ -854,8 +861,6 @@ function ManagerPages({ page, setPage }) {
             return <PickupMonitorPage />;
         case 'manajemen-user':
             return <UsersPage showStatus={showStatus} />;
-        case 'simpanan-sukarela':
-            return <SavingsByLabelPage label="SUKARELA" />;
         case 'shu':
             return <ShuPage />;
         case 'penarikan':
@@ -884,7 +889,6 @@ const pageTitles = {
     'harga-sampah': 'Manajemen Harga Sampah',
     'simpanan-pokok': 'Simpanan Pokok',
     'simpanan-wajib': 'Simpanan Wajib',
-    'simpanan-sukarela': 'Simpanan Sukarela',
     'shu': 'Sisa Hasil Usaha (SHU)',
     'penarikan': 'Penarikan Tunai',
     'pendapatan': 'Manajemen Pendapatan',

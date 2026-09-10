@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, logout } from '@/lib/auth';
+import { useApi, rp } from '@/lib/api';
 import {
-    Bell, ChevronDown, CircleHelp, FileBarChart, History,
-    LayoutGrid, LogOut, Menu, Settings, UserRound, WalletCards, X,
+    Bell, CalendarClock, CheckCircle2, ChevronDown, CircleHelp, FileBarChart, History,
+    LayoutGrid, LogOut, Menu, Settings, Tags, UserRound, WalletCards, X,
 } from 'lucide-react';
 import { ConfirmPopup } from './Popups';
+
+const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
@@ -14,7 +17,14 @@ export function MemberShell({ children, currentPage, setPage }) {
     const { user } = useAuth();
     const [mobileOpen, setMobileOpen] = useState(false);
     const [logoutOpen, setLogoutOpen] = useState(false);
+    const [bellOpen, setBellOpen] = useState(false);
     const [savingsOpen, setSavingsOpen] = useState(currentPage?.startsWith('simpanan'));
+
+    // Status iuran bulan berjalan — badge menu Wajib + preview lonceng.
+    const { data: billing } = useApi('/savings/billing-status');
+    const belumTagih = (billing?.detail ?? []).every(d => d.status === 'BELUM_TAGIH');
+    const unpaid = Boolean(billing) && !billing.fully_paid && !belumTagih;
+    const monthLabel = billing ? `${MONTHS[Number(billing.period?.split('-')[1]) - 1] ?? ''} ${billing.period?.split('-')[0] ?? ''}` : '';
 
     const close = () => setMobileOpen(false);
     const nav = (page) => { setPage(page); close(); };
@@ -58,6 +68,12 @@ export function MemberShell({ children, currentPage, setPage }) {
                     <span>Dashboard</span>
                 </button>
 
+                {/* Harga Sampah */}
+                <button onClick={() => nav('harga-sampah')} className={navBtnCls(is('harga-sampah'))}>
+                    <Tags size={18} />
+                    <span>Harga Sampah</span>
+                </button>
+
                 {/* Simpanan */}
                 <div>
                     <button
@@ -85,6 +101,10 @@ export function MemberShell({ children, currentPage, setPage }) {
                                     className={subNavBtnCls(is(key))}
                                 >
                                     {label}
+                                    {/* Titik penanda: masih ada tagihan wajib belum lunas. */}
+                                    {key === 'simpanan-wajib' && unpaid && (
+                                        <span className="ml-auto size-2 shrink-0 rounded-full bg-amber-500" aria-label="Ada tagihan belum lunas" />
+                                    )}
                                 </button>
                             ))}
                         </div>
@@ -159,13 +179,46 @@ export function MemberShell({ children, currentPage, setPage }) {
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
-                    <button
-                        aria-label="Notifikasi"
-                        className="relative rounded-full p-2 text-muted-foreground hover:bg-accent hover:text-primary transition-colors"
-                    >
-                        <Bell size={20} />
-                        <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-destructive ring-2 ring-card" />
-                    </button>
+                    {/* Lonceng: preview status tagihan iuran bulan berjalan. */}
+                    <div className="relative">
+                        <button
+                            aria-label="Notifikasi"
+                            onClick={() => setBellOpen(v => !v)}
+                            className="relative rounded-full p-2 text-muted-foreground hover:bg-accent hover:text-primary transition-colors"
+                        >
+                            <Bell size={20} />
+                            {unpaid && <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-amber-500 ring-2 ring-card" />}
+                        </button>
+                        {bellOpen && (
+                            <div className="absolute right-0 top-12 z-30 w-72 rounded-2xl border border-border bg-card p-4 text-left shadow-lg">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Notifikasi</p>
+                                {billing ? (
+                                    <div className="mt-2 flex items-start gap-2.5">
+                                        {billing.fully_paid
+                                            ? <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-600" />
+                                            : <CalendarClock size={18} className={cn('mt-0.5 shrink-0', belumTagih ? 'text-slate-400' : 'text-amber-600')} />}
+                                        <div>
+                                            <p className="text-xs font-semibold text-foreground">
+                                                {billing.fully_paid
+                                                    ? `Iuran ${monthLabel} lunas`
+                                                    : belumTagih
+                                                        ? `Tagihan ${monthLabel} belum diterbitkan`
+                                                        : `Tagihan iuran ${monthLabel}: ${rp(billing.total_monthly)}`}
+                                            </p>
+                                            {!billing.fully_paid && !belumTagih && (
+                                                <button onClick={() => { nav('simpanan-wajib'); setBellOpen(false); }}
+                                                    className="mt-1 text-[11px] font-semibold text-primary hover:underline">
+                                                    Lihat rincian tagihan
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <p className="mt-2 text-xs text-muted-foreground">Belum ada notifikasi.</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
                     <div className="flex items-center gap-2.5 rounded-full bg-[#e8efff] py-1.5 pl-4 pr-1.5 text-primary">
                         <div className="text-right leading-none">
                             <p className="text-xs font-semibold text-foreground">{user?.name || 'Anggota'}</p>

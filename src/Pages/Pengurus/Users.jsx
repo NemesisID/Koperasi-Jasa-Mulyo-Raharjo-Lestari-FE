@@ -1,7 +1,7 @@
 // Manajemen user (pengurus/petugas/anggota) oleh pengurus — GET/POST/PUT/DELETE /users.
 import { useState } from 'react';
-import { Eye, Pencil, Search, ShieldCheck, Trash2, UserPlus, Users, X } from 'lucide-react';
-import { PageHeader, StatCard, Pager } from '@/Components/Koperasi/ManagerUI';
+import { Eye, Pencil, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { PageHeader, Pager } from '@/Components/Koperasi/ManagerUI';
 import { ConfirmPopup, Modal } from '@/Components/Koperasi/Popups';
 import { api, useApi, rp, dfmt } from '@/lib/api';
 
@@ -26,6 +26,9 @@ function UserForm({ user, onDone, onCancel }) {
     const [form, setForm] = useState({
         name: user?.name ?? '', username: user?.username ?? '', email: user?.email ?? '',
         password: '', role: user?.role ?? 'petugas', phone: user?.phone ?? '', address: user?.address ?? '',
+        // Alamat per kategori — dual-status (rumah+pasar) boleh alamat berbeda.
+        address_rumah: user?.member?.address_rumah ?? user?.member?.address ?? '',
+        address_pasar: user?.member?.address_pasar ?? '',
         member_types: initialTypes,
     });
     const [error, setError] = useState('');
@@ -46,11 +49,13 @@ function UserForm({ user, onDone, onCancel }) {
         }
         setSaving(true); setError('');
         try {
-            const { member_types, ...rest } = form;
+            const { member_types, address_rumah, address_pasar, ...rest } = form;
             const body = {
                 ...rest,
                 password: form.password || undefined,
                 member_types: form.role === 'anggota' ? member_types : undefined,
+                address_rumah: form.role === 'anggota' ? (member_types.includes('rumah') ? address_rumah : undefined) : undefined,
+                address_pasar: form.role === 'anggota' ? (member_types.includes('pasar') ? address_pasar : undefined) : undefined,
             };
             const res = isEdit
                 ? await api(`/users/${user.id}`, { method: 'PUT', body })
@@ -124,9 +129,24 @@ function UserForm({ user, onDone, onCancel }) {
                     <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Telepon
                         <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={inputCls} />
                     </label>
-                    <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Alamat
-                        <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className={inputCls} />
-                    </label>
+                    {form.role === 'anggota' ? (
+                        // Alamat per kategori — muncul hanya untuk kategori yang dicentang.
+                        form.member_types.map(t => (
+                            <label key={t} className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80 capitalize">
+                                Alamat {t}
+                                <input
+                                    value={form[`address_${t}`]}
+                                    onChange={e => setForm(f => ({ ...f, [`address_${t}`]: e.target.value }))}
+                                    className={inputCls}
+                                    placeholder={`Alamat ${t === 'rumah' ? 'domisili' : 'lapak/los'} anggota`}
+                                />
+                            </label>
+                        ))
+                    ) : (
+                        <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Alamat
+                            <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className={inputCls} />
+                        </label>
+                    )}
                 </div>
                 {error && <p className="text-xs font-medium text-destructive">{error}</p>}
                 <div className="flex gap-3 pt-2">
@@ -142,14 +162,15 @@ function UserForm({ user, onDone, onCancel }) {
 
 export default function UsersPage({ showStatus }) {
     const { data, meta, loading, reload } = useApi('/users?per_page=25');
-    const [role, setRole] = useState('semua');
+    // Tab per role — anggota dulu (paling sering dipakai), lalu pengurus & petugas.
+    const [role, setRole] = useState('anggota');
     const [search, setSearch] = useState('');
     const [editing, setEditing] = useState(null);
     const [detail, setDetail] = useState(null);
     const [deleting, setDeleting] = useState(null);
 
     const rows = (data ?? []).filter(u =>
-        (role === 'semua' || u.role === role) &&
+        u.role === role &&
         (u.name?.toLowerCase().includes(search.toLowerCase()) || u.username?.toLowerCase().includes(search.toLowerCase()))
     );
     const counts = r => (data ?? []).filter(u => u.role === r).length;
@@ -167,28 +188,41 @@ export default function UsersPage({ showStatus }) {
                 }
             />
 
-            <div className="grid gap-5 md:grid-cols-3">
-                <StatCard icon={Users} label="Pengurus" value={`${counts('pengurus')} akun`} tone="blue" />
-                <StatCard icon={Users} label="Petugas" value={`${counts('petugas')} akun`} tone="green" />
-                <StatCard icon={ShieldCheck} label="Warga (Anggota)" value={`${counts('anggota')} akun`} tone="gold" />
+            {/* Tab per role */}
+            <div className="flex gap-2 rounded-2xl border border-border/80 bg-card p-1.5 shadow-xs">
+                {[
+                    ['anggota', 'Warga (Anggota)', 'gold'],
+                    ['pengurus', 'Pengurus', 'blue'],
+                    ['petugas', 'Petugas', 'green'],
+                ].map(([key, label]) => (
+                    <button
+                        key={key}
+                        onClick={() => setRole(key)}
+                        className={cn(
+                            'flex h-10 flex-1 items-center justify-center gap-2 rounded-xl text-xs font-semibold transition-all',
+                            role === key
+                                ? 'bg-primary text-white shadow-sm'
+                                : 'text-muted-foreground hover:bg-accent/60 hover:text-primary'
+                        )}
+                    >
+                        {label}
+                        <span className={cn(
+                            'rounded-full px-2 py-0.5 text-[10px] font-bold',
+                            role === key ? 'bg-white/20 text-white' : 'bg-secondary text-muted-foreground'
+                        )}>
+                            {counts(key)}
+                        </span>
+                    </button>
+                ))}
             </div>
 
             <section className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
                 <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center border-b border-border/60">
-                    <h2 className="text-lg font-bold text-foreground">Daftar Akun Internal</h2>
-                    <div className="flex items-center gap-2">
-                        <div className="relative w-full sm:w-64">
-                            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama / username…"
-                                className="h-9 w-full rounded-xl border border-border bg-slate-50/50 pl-9 pr-3 text-xs focus:bg-white" />
-                        </div>
-                        <select value={role} onChange={e => setRole(e.target.value)} aria-label="Filter role"
-                            className="h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-foreground focus:bg-white">
-                            <option value="semua">Semua Role</option>
-                            <option value="pengurus">Pengurus</option>
-                            <option value="petugas">Petugas</option>
-                            <option value="anggota">Warga</option>
-                        </select>
+                    <h2 className="text-lg font-bold text-foreground">Daftar Akun {ROLE_LABEL[role] ?? role}</h2>
+                    <div className="relative w-full sm:w-64">
+                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama / username…"
+                            className="h-9 w-full rounded-xl border border-border bg-slate-50/50 pl-9 pr-3 text-xs focus:bg-white" />
                     </div>
                 </div>
                 <div className="overflow-x-auto">
@@ -268,13 +302,43 @@ export default function UsersPage({ showStatus }) {
                     <div className="grid gap-3 p-6 sm:grid-cols-2 bg-card">
                         {[
                             ['Nama', detail.name], ['Username', `@${detail.username}`], ['Email', detail.email],
-                            ['Role', ROLE_LABEL[detail.role] ?? detail.role?.toUpperCase()], ['Telepon', detail.phone ?? '-'], ['Alamat', detail.address ?? '-'],
+                            ['Role', ROLE_LABEL[detail.role] ?? detail.role?.toUpperCase()], ['Telepon', detail.phone ?? '-'],
+                            ...(detail.role === 'anggota'
+                                ? [
+                                    // Resource sudah fallback ke alamat umum bila kategori tak punya alamat khusus.
+                                    ['Alamat Rumah', detail.member?.address_rumah ?? '-'],
+                                    ['Alamat Pasar', detail.member?.address_pasar ?? '-'],
+                                ]
+                                : [['Alamat', detail.address ?? '-']]),
                         ].map(([label, value]) => (
                             <div key={label} className="rounded-xl border border-border/60 bg-slate-50/70 p-3.5">
                                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
                                 <p className="mt-1 text-xs font-medium text-foreground">{value}</p>
                             </div>
                         ))}
+                        {detail.role === 'anggota' && (
+                            <>
+                                <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3.5">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Kode Anggota</p>
+                                    <p className="mt-1 font-mono text-xs font-bold text-primary">{detail.member?.member_code ?? '-'}</p>
+                                </div>
+                                <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3.5">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Kategori Anggota</p>
+                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                        {(detail.member?.categories?.length
+                                            ? detail.member.categories
+                                            : (detail.member?.category?.name ? [detail.member.category.name] : [])
+                                        ).map(c => (
+                                            <span key={c} className="rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold capitalize text-primary">
+                                                {c}
+                                            </span>
+                                        ))}
+                                        {!detail.member && <span className="text-xs text-muted-foreground">-</span>}
+                                    </div>
+                                    <p className="mt-1.5 text-[10px] text-muted-foreground">Penjemputan mengikuti kategori (rumah / pasar).</p>
+                                </div>
+                            </>
+                        )}
                     </div>
                     <div className="p-6 pt-0 bg-card">
                         <button onClick={() => setDetail(null)} className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-white shadow-sm hover:bg-primary/90">Tutup</button>

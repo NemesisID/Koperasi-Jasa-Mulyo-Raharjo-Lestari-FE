@@ -1,7 +1,8 @@
 // Halaman Simpanan Wajib: list seluruh anggota + tagihan operasional/simpanan, status BLM BAYAR,
-// dan aksi konfirmasi pembayaran Rp50.000 (auto-split 45.000 operasional + 5.000 simpanan).
+// aksi konfirmasi pembayaran (auto-split operasional + simpanan per kategori member),
+// dan tombol terbitkan tagihan massal bulan berjalan (POST /savings/generate-monthly-billing).
 import { useState } from 'react';
-import { CheckCircle2, Search, WalletCards } from 'lucide-react';
+import { CalendarPlus, CheckCircle2, Search, WalletCards } from 'lucide-react';
 import { PageHeader, StatCard, Pager } from '@/Components/Koperasi/ManagerUI';
 import { ConfirmPopup } from '@/Components/Koperasi/Popups';
 import { api, useApi, rp } from '@/lib/api';
@@ -9,12 +10,33 @@ import { usePopup } from './Index';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
+const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
 export default function WajibOverviewPage() {
     const { showStatus } = usePopup();
     const { data, loading, error, reload } = useApi('/savings/wajib-overview');
     const [search, setSearch] = useState('');
     const [paying, setPaying] = useState(null); // member id
     const [confirming, setConfirming] = useState(null); // member row menunggu konfirmasi
+    const [billingOpen, setBillingOpen] = useState(false); // konfirmasi tagihan massal
+    const [generating, setGenerating] = useState(false);
+
+    const periodLabel = data?.period
+        ? `${MONTHS[Number(data.period.split('-')[1]) - 1] ?? ''} ${data.period.split('-')[0]}`
+        : '-';
+
+    const generateBilling = async () => {
+        setGenerating(true);
+        try {
+            const res = await api('/savings/generate-monthly-billing', { method: 'POST' });
+            showStatus('Tagihan Diterbitkan', res?.data?.invoices_created
+                ? `${res.data.invoices_created} tagihan baru dibuat untuk periode ${periodLabel}.`
+                : (res?.message || 'Tagihan bulan berjalan sudah diterbitkan — tidak ada tagihan ganda.'));
+            reload();
+        } catch (err) {
+            showStatus('Gagal Menerbitkan', err.message);
+        } finally { setGenerating(false); setBillingOpen(false); }
+    };
 
     const rows = (data?.members ?? []).filter(m =>
         (m.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
@@ -26,9 +48,9 @@ export default function WajibOverviewPage() {
         try {
             const res = await api('/savings/pay', {
                 method: 'POST',
-                body: { member_id: m.member_id, label: 'WAJIB', jumlah: 50000, metode: 'tunai' },
+                body: { member_id: m.member_id, label: 'WAJIB', jumlah: m.tagihan_total, metode: 'tunai' },
             });
-            showStatus('Pembayaran Tercatat', res?.message || `Setoran wajib ${m.name} lunas: Rp45.000 operasional + Rp5.000 simpanan.`);
+            showStatus('Pembayaran Tercatat', res?.message || `Setoran wajib ${m.name} lunas: ${rp(m.tagihan_operasional)} operasional + ${rp(m.tagihan_simpanan)} simpanan.`);
             reload();
         } catch (err) {
             showStatus('Gagal Mencatat', err.errors ? Object.values(err.errors)[0]?.[0] : err.message);
@@ -39,7 +61,13 @@ export default function WajibOverviewPage() {
         <div className="flex flex-col gap-6">
             <PageHeader
                 title="Simpanan Wajib Bulanan"
-                desc={`Status setoran wajib seluruh anggota — periode ${data?.period ?? '-'}. Setoran Rp50.000/bulan dipecah otomatis: Rp45.000 operasional + Rp5.000 simpanan.`}
+                desc={`Status setoran wajib seluruh anggota — periode ${data?.period ?? '-'}. Setoran Rp50.000 per kategori member: Rp45.000 operasional + Rp5.000 simpanan.`}
+                action={
+                    <button onClick={() => setBillingOpen(true)} disabled={generating}
+                        className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-60">
+                        <CalendarPlus size={16} /> <span>{generating ? 'Menerbitkan…' : 'Buat Tagihan Bulan Ini'}</span>
+                    </button>
+                }
             />
 
             <div className="grid gap-5 md:grid-cols-3">
@@ -117,10 +145,21 @@ export default function WajibOverviewPage() {
                 <ConfirmPopup
                     open
                     title={`Konfirmasi pembayaran setoran wajib ${confirming.name}?`}
-                    description="Total Rp50.000 — otomatis dipecah: Rp45.000 operasional + Rp5.000 simpanan."
+                    description={`Total ${rp(confirming.tagihan_total)} — otomatis dipecah: ${rp(confirming.tagihan_operasional)} operasional + ${rp(confirming.tagihan_simpanan)} simpanan.`}
                     actionLabel="Konfirmasi Bayar"
                     onCancel={() => setConfirming(null)}
                     onConfirm={() => { const m = confirming; setConfirming(null); confirmPay(m); }}
+                />
+            )}
+
+            {billingOpen && (
+                <ConfirmPopup
+                    open
+                    title={`Terbitkan tagihan iuran rutin periode ${periodLabel}?`}
+                    description="Tagihan dibuat untuk seluruh anggota aktif yang belum punya tagihan bulan ini. Aman dijalankan berulang — tidak membuat tagihan ganda."
+                    actionLabel="Terbitkan"
+                    onCancel={() => setBillingOpen(false)}
+                    onConfirm={generateBilling}
                 />
             )}
         </div>

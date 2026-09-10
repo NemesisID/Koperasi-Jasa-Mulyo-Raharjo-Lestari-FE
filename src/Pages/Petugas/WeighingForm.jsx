@@ -1,7 +1,7 @@
 // FE-3.2 + FE-3.3 — Form timbang cepat untuk petugas lapangan (mobile-first):
 // autocomplete anggota, jenis sampah dinamis, input berat besar, toggle lokasi
 // (diantar ke gudang vs dijemput), dan kalkulator preview real-time 20%.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     Camera, CheckCircle2, Home, Package, Plus, Scale, Trash2,
 } from 'lucide-react';
@@ -29,6 +29,19 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
     const [receipt, setReceipt] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+
+    // Edit timbangan (tiket selesai): prefill rincian item lama agar petugas
+    // cukup mengoreksi, bukan mengisi ulang dari nol.
+    const { data: ticketDetail } = useApi(initialPickup?.status === 'selesai' ? `/pickups/${initialPickup.id}` : null);
+    useEffect(() => {
+        const items = ticketDetail?.items;
+        if (items?.length) {
+            setRows(items.map(it => ({
+                categoryId: String(it.category?.id ?? ''),
+                quantity: it.weight_kg ? String(it.weight_kg) : String(it.unit_count ?? ''),
+            })));
+        }
+    }, [ticketDetail]);
 
     // R4 (revisi fase-2): dokumentasi foto timbang — kamera native + geotag + timestamp.
     const [photo, setPhoto] = useState(null);
@@ -216,8 +229,14 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
             <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <h1 className="text-2xl font-bold text-foreground md:text-3xl">Timbang Sampah</h1>
-                        <p className="mt-1 text-sm text-muted-foreground">Input penimbangan setoran anggota — saldo masuk otomatis ke dompet anggota setelah disimpan.</p>
+                        <h1 className="text-2xl font-bold text-foreground md:text-3xl">
+                            {initialPickup?.status === 'selesai' ? 'Edit Timbangan' : 'Timbang Sampah'}
+                        </h1>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            {initialPickup?.status === 'selesai'
+                                ? 'Koreksi timbangan — rincian lama otomatis diganti setelah disimpan.'
+                                : 'Input penimbangan setoran anggota — saldo masuk otomatis ke dompet anggota setelah disimpan.'}
+                        </p>
                     </div>
                     {onBack && (
                         <button onClick={onBack}
