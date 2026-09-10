@@ -4,7 +4,7 @@ import { Head } from '@/lib/shims';
 import { login, useAuth, logout } from '@/lib/auth';
 import { Building2, Eye, EyeOff, Leaf, LockKeyhole, LogIn, UserRound } from 'lucide-react';
 
-const HOME_BY_ROLE = { pengurus: '/pengurus', ketua: '/pengurus', petugas: '/petugas', pengepul: '/petugas', anggota: '/anggota' };
+const HOME_BY_ROLE = { pengurus: '/pengurus', ketua: '/pengurus', petugas: '/petugas', anggota: '/anggota' };
 
 function FeatureCard({ icon: Icon, title, description, green = false }) {
     return (

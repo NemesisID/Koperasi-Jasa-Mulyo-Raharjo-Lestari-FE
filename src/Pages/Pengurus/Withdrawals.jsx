@@ -132,7 +132,7 @@ export default function WithdrawalsPage() {
             reloadRequests();
             showStatus(action === 'approve' ? 'Penarikan disetujui.' : 'Penarikan ditolak.', `Permintaan ${r.member?.name ?? ''} diproses.`);
         } catch (err) {
-            alert(err.message || 'Gagal memproses permintaan.');
+            showStatus('Gagal Memproses', err.message || 'Gagal memproses permintaan.');
         } finally { setBusyId(''); }
     };
 

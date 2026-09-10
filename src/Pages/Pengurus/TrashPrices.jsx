@@ -1,6 +1,6 @@
-// FE-2.3 — UI Manajemen Katalog & Harga Sampah (alur.md):
-// card utama organik / campur / anorganik, buat-edit kategori,
-// harga jual → biaya admin auto 20% → harga bersih (jual − admin).
+// FE-2.3 — UI Manajemen Katalog & Harga Sampah (revisi fase-3):
+// tiap sampah 3 nominal — Harga Kotor (manual), Harga Jual (manual),
+// Harga Bersih (auto 80% harga jual = jual − potongan koperasi 20%).
 import { useState } from 'react';
 import {
     CheckCircle2, History, Pencil, Plus, Recycle, Save, Tag, TrendingDown, TrendingUp, X,
@@ -31,15 +31,12 @@ function CategoryFormModal({ category, onClose, onSaved }) {
         name: category?.name ?? '',
         type: category?.type ?? 'plastik',
         unit: category?.unit ?? 'kg',
-        price_sorted: category?.price_sorted ?? 0,
         price_unsorted: category?.price_unsorted ?? 0,
         price_sell: category?.price_sell ?? 0,
-        price_admin: category?.price_admin ?? 0,
     }));
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-    // Harga bersih (alur.md): admin otomatis 20% dari harga jual, masih bisa disunting.
-    const setSell = (v) => setForm(f => ({ ...f, price_sell: v, price_admin: Math.round(v * 0.2) }));
-    const priceMember = Math.max(0, form.price_sell - form.price_admin);
+    // Harga Bersih = otomatis 20% dari Harga Jual (potongan koperasi).
+    const priceMember = Math.round(Number(form.price_sell) * 0.8);
 
     const submit = async (e) => {
         e.preventDefault();
@@ -50,10 +47,8 @@ function CategoryFormModal({ category, onClose, onSaved }) {
                 method: category ? 'PUT' : 'POST',
                 body: {
                     ...form,
-                    price_sorted: Number(form.price_sorted),
                     price_unsorted: Number(form.price_unsorted),
                     price_sell: Number(form.price_sell),
-                    price_admin: Number(form.price_admin),
                 },
             });
             onSaved(category ? 'Kategori berhasil diperbarui.' : 'Kategori baru berhasil dibuat.');
@@ -98,26 +93,16 @@ function CategoryFormModal({ category, onClose, onSaved }) {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-semibold text-foreground/80">Harga Gudang — Tersortir (Rp)</label>
-                        <input required type="number" min="0" value={form.price_sorted} onChange={e => set('price_sorted', e.target.value)} className={inputCls} />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-semibold text-foreground/80">Harga Gudang — Belum Sortir (Rp)</label>
+                        <label className="text-xs font-semibold text-foreground/80">Harga Kotor (Rp)</label>
                         <input required type="number" min="0" value={form.price_unsorted} onChange={e => set('price_unsorted', e.target.value)} className={inputCls} />
                     </div>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
                     <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-semibold text-foreground/80">Harga Jual (Rp)</label>
-                        <input required type="number" min="0" value={form.price_sell} onChange={e => setSell(Number(e.target.value))} className={inputCls} />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-semibold text-foreground/80">Biaya Admin (auto 20% harga jual)</label>
-                        <input required type="number" min="0" value={form.price_admin} onChange={e => set('price_admin', Number(e.target.value))} className={inputCls} />
+                        <input required type="number" min="0" value={form.price_sell} onChange={e => set('price_sell', e.target.value)} className={inputCls} />
                     </div>
                 </div>
                 <div className="rounded-xl bg-[#eef3fc] px-4 py-3 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-primary">Harga Bersih untuk Anggota (otomatis)</span>
+                    <span className="text-xs font-semibold text-primary">Harga Bersih untuk Anggota (auto 20% dari harga jual)</span>
                     <strong className="text-sm font-bold text-primary">{rp(priceMember)}</strong>
                 </div>
                 {error && <p className="text-xs font-medium text-destructive">{error}</p>}
@@ -156,8 +141,8 @@ function HistoryModal({ category, onClose }) {
                     <thead className="bg-[#eef3fc] text-xs font-bold uppercase tracking-wider text-slate-700">
                         <tr>
                             <th className="px-5 py-3">Tanggal</th>
-                            <th className="px-5 py-3">Gudang Sortir (lama → baru)</th>
-                            <th className="px-5 py-3">Belum Sortir (lama → baru)</th>
+                            <th className="px-5 py-3">Harga Kotor (lama → baru)</th>
+                            <th className="px-5 py-3">Harga Jual (lama → baru)</th>
                             <th className="px-5 py-3">Oleh</th>
                         </tr>
                     </thead>
@@ -170,12 +155,15 @@ function HistoryModal({ category, onClose }) {
                                     <tr key={i} className="hover:bg-secondary/40 transition-colors">
                                         <td className="px-5 py-3.5 text-muted-foreground whitespace-nowrap">{new Date(log.changed_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                                         <td className="px-5 py-3.5 whitespace-nowrap">
-                                            <span className="text-xs text-muted-foreground line-through">{rp(log.old_price_sorted)}</span>
-                                            <span className="ml-1.5 font-bold text-primary">{rp(log.new_price_sorted)}</span>
-                                        </td>
-                                        <td className="px-5 py-3.5 whitespace-nowrap">
                                             <span className="text-xs text-muted-foreground line-through">{rp(log.old_price_unsorted)}</span>
                                             <span className="ml-1.5 font-bold text-primary">{rp(log.new_price_unsorted)}</span>
+                                        </td>
+                                        <td className="px-5 py-3.5 whitespace-nowrap">
+                                            {log.old_price_sell == null && log.new_price_sell == null ? '-'
+                                                : <>
+                                                    <span className="text-xs text-muted-foreground line-through">{log.old_price_sell == null ? '-' : rp(log.old_price_sell)}</span>
+                                                    <span className="ml-1.5 font-bold text-primary">{log.new_price_sell == null ? '-' : rp(log.new_price_sell)}</span>
+                                                </>}
                                         </td>
                                         <td className="px-5 py-3.5 text-muted-foreground">{log.changed_by?.name ?? '-'}</td>
                                     </tr>
@@ -204,15 +192,14 @@ export default function TrashPricesPage() {
     const active = MAIN_GROUPS.find(g => g.key === group) ?? MAIN_GROUPS[0];
     const filtered = catalog.filter(active.match);
     const [savingId, setSavingId] = useState(null);
-    const [drafts, setDrafts] = useState({}); // id → { price_sorted, price_unsorted, price_sell, price_admin }
+    const [drafts, setDrafts] = useState({}); // id → { price_unsorted, price_sell }
 
     const draftOf = (c) => drafts[c.id] ?? {
-        price_sorted: c.price_sorted, price_unsorted: c.price_unsorted,
-        price_sell: c.price_sell, price_admin: c.price_admin,
+        price_unsorted: c.price_unsorted, price_sell: c.price_sell,
     };
     const setDraft = (id, k, v, base) => setDrafts(prev => ({
         ...prev,
-        [id]: { ...(prev[id] ?? base), [k]: v, ...(k === 'price_sell' ? { price_admin: Math.round(Number(v) * 0.2) } : {}) },
+        [id]: { ...(prev[id] ?? base), [k]: v },
     }));
 
     const savePrice = async (c) => {
@@ -220,16 +207,14 @@ export default function TrashPricesPage() {
         setSavingId(c.id);
         try {
             await api(`/trash-categories/${c.id}/price`, { method: 'PATCH', body: {
-                price_sorted: Number(d.price_sorted),
                 price_unsorted: Number(d.price_unsorted),
                 price_sell: Number(d.price_sell),
-                price_admin: Number(d.price_admin),
             } });
             setDrafts(prev => { const { [c.id]: _, ...rest } = prev; return rest; });
             reload();
             showStatus('Harga Tersimpan', `Harga ${c.name} berhasil diperbarui dan tercatat di log audit.`);
         } catch (err) {
-            alert(err.message || 'Gagal menyimpan harga.');
+            showStatus('Gagal Menyimpan', err.message || 'Gagal menyimpan harga.');
         } finally { setSavingId(null); }
     };
 
@@ -237,7 +222,7 @@ export default function TrashPricesPage() {
         <div className="flex flex-col gap-6">
             <PageHeader
                 title="Manajemen Katalog Sampah"
-                desc="Kelola kategori & harga sampah — harga bersih anggota dihitung otomatis (harga jual − 20% admin)."
+                desc="Kelola kategori & harga sampah — 3 nominal per item: harga kotor, harga jual, dan harga bersih anggota (auto 20% dari harga jual)."
                 action={
                     <button
                         onClick={() => setEditing({})}
@@ -252,7 +237,7 @@ export default function TrashPricesPage() {
             <div className="grid gap-5 md:grid-cols-3">
                 <StatCard icon={Tag} label="Kategori Katalog" value={`${catalog.length} Item`} note={`${new Set(catalog.map(c => c.type)).size} jenis`} tone="blue" />
                 <StatCard icon={TrendingUp} label="Harga Jual Tertinggi" value={rp(Math.max(0, ...catalog.map(c => Number(c.price_sell))))} note="Harga jual ke pengepul" tone="green" />
-                <StatCard icon={TrendingDown} label="Harga Bersih Tertinggi" value={rp(Math.max(0, ...catalog.map(c => Number(c.price_member))))} note="Diterima anggota (jual − admin)" tone="red" />
+                <StatCard icon={TrendingDown} label="Harga Bersih Tertinggi" value={rp(Math.max(0, ...catalog.map(c => Number(c.price_member))))} note="Diterima anggota (80% harga jual)" tone="red" />
             </div>
 
             <section className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
@@ -277,27 +262,26 @@ export default function TrashPricesPage() {
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[900px] text-left text-sm">
+                    <table className="w-full min-w-[820px] text-left text-sm">
                         <thead className="bg-[#eef3fc] text-xs font-bold uppercase tracking-wider text-slate-700">
                             <tr>
                                 <th className="px-6 py-3.5">Jenis Sampah</th>
-                                <th className="px-6 py-3.5">Gudang (sortir / belum)</th>
+                                <th className="px-6 py-3.5">Harga Kotor</th>
                                 <th className="px-6 py-3.5">Harga Jual</th>
-                                <th className="px-6 py-3.5">Admin (auto 20%)</th>
-                                <th className="px-6 py-3.5">Harga Bersih</th>
+                                <th className="px-6 py-3.5">Harga Bersih (auto 20%)</th>
                                 <th className="px-6 py-3.5">Aksi</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
                             {loading
-                                ? <tr><td colSpan={6} className="px-6 py-4 text-muted-foreground">Memuat katalog…</td></tr>
+                                ? <tr><td colSpan={5} className="px-6 py-4 text-muted-foreground">Memuat katalog…</td></tr>
                             : error
-                                ? <tr><td colSpan={6} className="px-6 py-4 text-muted-foreground">Gagal memuat katalog.</td></tr>
+                                ? <tr><td colSpan={5} className="px-6 py-4 text-muted-foreground">Gagal memuat katalog.</td></tr>
                             : filtered.length === 0
-                                ? <tr><td colSpan={6} className="px-6 py-4 text-muted-foreground">Belum ada kategori di grup ini.</td></tr>
+                                ? <tr><td colSpan={5} className="px-6 py-4 text-muted-foreground">Belum ada kategori di grup ini.</td></tr>
                             : filtered.map(c => {
                                 const d = draftOf(c);
-                                const priceMember = Math.max(0, d.price_sell - d.price_admin);
+                                const priceMember = Math.round(Number(d.price_sell) * 0.8);
                                 return (
                                     <tr key={c.id} className="hover:bg-secondary/40 transition-colors">
                                         <td className="px-6 py-4">
@@ -312,20 +296,14 @@ export default function TrashPricesPage() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="flex items-center gap-1.5">
-                                                {[['price_sorted', 'sortir'], ['price_unsorted', 'belum']].map(([k, ph]) => (
-                                                    <input
-                                                        key={k}
-                                                        type="number"
-                                                        min="0"
-                                                        value={d[k]}
-                                                        onChange={e => setDraft(c.id, k, e.target.value, d)}
-                                                        aria-label={`${k} ${c.name}`}
-                                                        placeholder={ph}
-                                                        className="h-9 w-28 rounded-xl border border-border bg-slate-50/50 px-3 text-xs font-bold text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
-                                                    />
-                                                ))}
-                                            </div>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value={d.price_unsorted}
+                                                onChange={e => setDraft(c.id, 'price_unsorted', e.target.value, d)}
+                                                aria-label={`Harga kotor ${c.name}`}
+                                                className="h-9 w-32 rounded-xl border border-border bg-slate-50/50 px-3 text-xs font-bold text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+                                            />
                                         </td>
                                         <td className="px-6 py-4">
                                             <input
@@ -334,17 +312,7 @@ export default function TrashPricesPage() {
                                                 value={d.price_sell}
                                                 onChange={e => setDraft(c.id, 'price_sell', e.target.value, d)}
                                                 aria-label={`Harga jual ${c.name}`}
-                                                className="h-9 w-28 rounded-xl border border-border bg-slate-50/50 px-3 text-xs font-bold text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
-                                            />
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value={d.price_admin}
-                                                onChange={e => setDraft(c.id, 'price_admin', e.target.value, d)}
-                                                aria-label={`Biaya admin ${c.name}`}
-                                                className="h-9 w-28 rounded-xl border border-border bg-slate-50/50 px-3 text-xs font-bold text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+                                                className="h-9 w-32 rounded-xl border border-border bg-slate-50/50 px-3 text-xs font-bold text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
                                             />
                                         </td>
                                         <td className="px-6 py-4">
@@ -392,7 +360,7 @@ export default function TrashPricesPage() {
             </section>
 
             <p className="text-xs text-muted-foreground">
-                Harga bersih untuk katalog warga = harga jual − biaya admin (terisi otomatis 20% dari harga jual, tetap bisa disunting).
+                Harga Bersih untuk anggota terisi otomatis oleh sistem (80% dari Harga Jual); Harga Kotor dan Harga Jual diisi manual oleh pengurus.
             </p>
 
             {editing !== null && (

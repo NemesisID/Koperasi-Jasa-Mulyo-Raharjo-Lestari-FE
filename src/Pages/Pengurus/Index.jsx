@@ -4,12 +4,13 @@ import { Head } from '@/lib/shims';
 import { useAuth } from '@/lib/auth';
 import {
     CheckCircle2, ChevronLeft, ChevronRight, Clock,
-    FileSpreadsheet, FileText, Filter, Plus, Search, X
+    FileSpreadsheet, FileText, Plus, Search, X
 } from 'lucide-react';
 import { ManagerShell } from '@/Components/Koperasi/ManagerShell';
 import { FormPopup, StatusPopup } from '@/Components/Koperasi/Popups';
 import { api, useApi, download, rp, dfmt } from '@/lib/api';
 import ComplaintsDeskPage from './ComplaintsDesk';
+import TrashPricesPage from './TrashPrices';
 import UsersPage from './Users';
 import WajibOverviewPage from './WajibOverview';
 import PickupMonitorPage from './PickupMonitor';
@@ -24,13 +25,14 @@ const cn = (...cls) => cls.filter(Boolean).join(' ');
 // ─── Reusable Small Components ────────────────────────────────
 // Unduh laporan (alur.md: Excel & PDF) — type: laba_rugi | trash_volume.
 function ExportButtons({ type, start, end, light }) {
+    const { showStatus } = usePopup();
     const [busy, setBusy] = useState('');
     const go = async (format) => {
         setBusy(format);
         try {
             await download(`/reports/export?type=${type}&period_start=${start}&period_end=${end}&format=${format}`, `laporan-${type}-${format === 'xlsx' ? 'excel' : 'pdf'}.${format}`);
         } catch (err) {
-            alert(err.message || 'Unduhan gagal.');
+            showStatus('Unduhan Gagal', err.message || 'Unduhan gagal.');
         } finally { setBusy(''); }
     };
     const base = light
@@ -279,222 +281,7 @@ function RecentTransactions() {
     );
 }
 
-// ─── 2. Manajemen Harga Sampah (Card grid, tanpa icon) ────────
-const TYPE_LABELS = { logam: 'Logam', besi: 'Besi', kertas: 'Kertas', plastik: 'Plastik', elektronik: 'Elektronik', organik: 'Organik', campur: 'Campuran', lainnya: 'Lainnya' };
-
-function WastePriceCard({ item, onEdit }) {
-    return (
-        <article className="flex flex-col justify-between gap-4 rounded-2xl border border-border/80 bg-card p-5 shadow-xs transition-all hover:shadow-md">
-            <div>
-                <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                        <h3 className="text-base font-bold text-foreground">{item.name}</h3>
-                        <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                            {TYPE_LABELS[item.type] ?? item.type} · per {item.unit}
-                        </p>
-                    </div>
-                    <span className={cn(
-                        'shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider',
-                        item.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
-                    )}>
-                        {item.is_active ? 'Aktif' : 'Nonaktif'}
-                    </span>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5">
-                <div className="rounded-xl bg-[#eef3fc] px-3 py-2.5 text-center">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Harga Bersih</p>
-                    <strong className="mt-0.5 block text-sm font-extrabold text-primary">{rp(item.price_sorted)}</strong>
-                </div>
-                <div className="rounded-xl bg-emerald-50 px-3 py-2.5 text-center">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700/70">Harga Kotor</p>
-                    <strong className="mt-0.5 block text-sm font-extrabold text-emerald-700">{rp(item.price_unsorted)}</strong>
-                </div>
-                <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-center">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700/70">Harga Jual</p>
-                    <strong className="mt-0.5 block text-sm font-extrabold text-amber-700">{rp(item.price_sell)}</strong>
-                </div>
-                <div className="rounded-xl bg-purple-50 px-3 py-2.5 text-center">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-purple-700/70">Harga Anggota</p>
-                    <strong className="mt-0.5 block text-sm font-extrabold text-purple-700">{rp(item.price_member)}</strong>
-                </div>
-            </div>
-
-            <button
-                onClick={() => onEdit(item)}
-                className="h-9 w-full rounded-xl border border-primary text-xs font-semibold text-primary transition-all hover:bg-primary hover:text-white"
-            >
-                Ubah Harga
-            </button>
-        </article>
-    );
-}
-
-function PriceEditForm({ item, onDone, onCancel }) {
-    const [form, setForm] = useState({
-        price_sorted: item.price_sorted,
-        price_unsorted: item.price_unsorted,
-        price_sell: item.price_sell ?? 0,
-        notes: '',
-    });
-    const [error, setError] = useState('');
-    const [saving, setSaving] = useState(false);
-
-    async function submit(e) {
-        e.preventDefault();
-        setSaving(true); setError('');
-        try {
-            const res = await api(`/trash-categories/${item.id}/price`, {
-                method: 'PATCH',
-                body: {
-                    price_sorted: Number(form.price_sorted),
-                    price_unsorted: Number(form.price_unsorted),
-                    price_sell: Number(form.price_sell),
-                    notes: form.notes || null,
-                },
-            });
-            onDone(res?.message || 'Harga berhasil diperbarui.');
-        } catch (err) {
-            setError(err.errors?.price_sorted?.[0] || err.message || 'Gagal menyimpan harga.');
-        } finally {
-            setSaving(false);
-        }
-    }
-
-    const inputCls = 'h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15';
-
-    const memberPrice = Math.round(Number(form.price_sell || 0) * 0.8);
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-xs p-4" onClick={onCancel}>
-            <div className="modal-content-anim w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between bg-accent/60 px-6 py-4 border-b border-border/60">
-                    <h2 className="text-base font-bold text-foreground">Ubah Harga — {item.name}</h2>
-                    <button type="button" onClick={onCancel} className="rounded-lg p-1 text-muted-foreground hover:bg-black/5 hover:text-foreground">
-                        <X size={18} />
-                    </button>
-                </div>
-                <form onSubmit={submit} className="flex flex-col gap-4 p-6">
-                    <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">
-                        Harga Bersih / {item.unit} (Rp)
-                        <input type="number" min="0" required value={form.price_sorted}
-                            onChange={e => setForm(f => ({ ...f, price_sorted: e.target.value }))} className={inputCls} />
-                    </label>
-                    <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">
-                        Harga Kotor / {item.unit} (Rp)
-                        <input type="number" min="0" required value={form.price_unsorted}
-                            onChange={e => setForm(f => ({ ...f, price_unsorted: e.target.value }))} className={inputCls} />
-                    </label>
-                    <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">
-                        Harga Jual / {item.unit} (Rp) — harga ke pengepul/marketplace
-                        <input type="number" min="0" required value={form.price_sell}
-                            onChange={e => setForm(f => ({ ...f, price_sell: e.target.value }))} className={inputCls} />
-                    </label>
-                    <div className="rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 flex items-center justify-between">
-                        <span className="text-xs font-semibold text-purple-700">Harga Anggota (otomatis, jual − 20%)</span>
-                        <strong className="text-sm font-extrabold text-purple-700">{rp(memberPrice)}</strong>
-                    </div>
-                    <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">
-                        Catatan (opsional)
-                        <input type="text" maxLength={255} value={form.notes}
-                            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                            placeholder="Alasan penyesuaian harga…" className={inputCls} />
-                    </label>
-                    {error && <p className="text-xs font-medium text-destructive">{error}</p>}
-                    <div className="flex gap-3 pt-2">
-                        <button type="button" onClick={onCancel} className="h-11 flex-1 rounded-xl border border-border bg-card text-sm font-semibold text-foreground/80 hover:bg-secondary transition-all">Batal</button>
-                        <button type="submit" disabled={saving} className="h-11 flex-[1.5] rounded-xl bg-primary text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-60">
-                            {saving ? 'Menyimpan…' : 'Simpan Harga'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-
-function SavingsWastePricePage() {
-    const { showStatus } = usePopup();
-    const { data, loading, reload } = useApi('/trash-categories');
-    const [typeFilter, setTypeFilter] = useState('semua');
-    const [search, setSearch] = useState('');
-    const [editing, setEditing] = useState(null);
-
-    const items = data ?? [];
-    const types = ['semua', ...new Set(items.map(i => i.type))];
-    const filtered = items.filter(i =>
-        (typeFilter === 'semua' || i.type === typeFilter) &&
-        i.name.toLowerCase().includes(search.toLowerCase())
-    );
-
-    return (
-        <div className="flex flex-col gap-6">
-            <PageHeader
-                title="Manajemen Harga Sampah"
-                desc="Katalog dan papan harga sampah — perbarui harga harian per kategori."
-                action={
-                    <button
-                        onClick={reload}
-                        className="flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-4 text-xs font-semibold text-foreground hover:bg-secondary"
-                    >
-                        <Filter size={15} /> Muat Ulang
-                    </button>
-                }
-            />
-
-            {/* Filter bar */}
-            <div className="flex flex-col justify-between gap-3 rounded-2xl border border-border/80 bg-card p-4 sm:flex-row sm:items-center">
-                <div className="flex flex-wrap items-center gap-2">
-                    {types.map(t => (
-                        <button
-                            key={t}
-                            onClick={() => setTypeFilter(t)}
-                            className={cn(
-                                'rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all',
-                                typeFilter === t
-                                    ? 'bg-primary text-white shadow-sm'
-                                    : 'bg-accent text-accent-foreground hover:bg-accent/80'
-                            )}
-                        >
-                            {t === 'semua' ? 'Semua' : TYPE_LABELS[t] ?? t}
-                        </button>
-                    ))}
-                </div>
-                <div className="relative w-full sm:w-64">
-                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        placeholder="Cari nama sampah…"
-                        className="h-9 w-full rounded-xl border border-border bg-slate-50/50 pl-9 pr-3 text-xs focus:bg-white"
-                    />
-                </div>
-            </div>
-
-            {loading && <p className="py-8 text-center text-sm text-muted-foreground">Memuat katalog sampah…</p>}
-            {!loading && filtered.length === 0 && (
-                <div className="rounded-2xl border border-border/80 bg-card p-10 text-center text-sm text-muted-foreground">
-                    Tidak ada kategori sampah yang cocok.
-                </div>
-            )}
-
-            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                {filtered.map(item => (
-                    <WastePriceCard key={item.id} item={item} onEdit={setEditing} />
-                ))}
-            </div>
-
-            {editing && (
-                <PriceEditForm
-                    item={editing}
-                    onCancel={() => setEditing(null)}
-                    onDone={(msg) => { setEditing(null); reload(); showStatus('Harga Berhasil Diperbarui', msg); }}
-                />
-            )}
-        </div>
-    );
-}
+// ─── 2. Manajemen Harga Sampah → TrashPrices.jsx (3 nominal, revisi fase-3) ──
 
 // ─── 3. Simpanan (per label) Sub-page ─────────────────────────
 const LABEL_TITLES = {
@@ -1058,7 +845,7 @@ function ManagerPages({ page, setPage }) {
         case 'dashboard':
             return <DashboardPage setPage={setPage} />;
         case 'harga-sampah':
-            return <SavingsWastePricePage />;
+            return <TrashPricesPage />;
         case 'simpanan-pokok':
             return <SavingsByLabelPage label="POKOK" />;
         case 'simpanan-wajib':

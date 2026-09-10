@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { CheckCircle2, Search, WalletCards } from 'lucide-react';
 import { PageHeader, StatCard, Pager } from '@/Components/Koperasi/ManagerUI';
+import { ConfirmPopup } from '@/Components/Koperasi/Popups';
 import { api, useApi, rp } from '@/lib/api';
 import { usePopup } from './Index';
 
@@ -13,6 +14,7 @@ export default function WajibOverviewPage() {
     const { data, loading, error, reload } = useApi('/savings/wajib-overview');
     const [search, setSearch] = useState('');
     const [paying, setPaying] = useState(null); // member id
+    const [confirming, setConfirming] = useState(null); // member row menunggu konfirmasi
 
     const rows = (data?.members ?? []).filter(m =>
         (m.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
@@ -20,7 +22,6 @@ export default function WajibOverviewPage() {
     );
 
     const confirmPay = async (m) => {
-        if (!confirm(`Konfirmasi pembayaran setoran wajib ${m.name} sebesar Rp50.000?\n(otomatis: Rp45.000 operasional + Rp5.000 simpanan)`)) return;
         setPaying(m.member_id);
         try {
             const res = await api('/savings/pay', {
@@ -95,7 +96,7 @@ export default function WajibOverviewPage() {
                                         {m.status === 'LUNAS' ? (
                                             <span className="text-xs font-semibold text-emerald-600">Sudah dibayar</span>
                                         ) : (
-                                            <button onClick={() => confirmPay(m)} disabled={paying === m.member_id}
+                                            <button onClick={() => setConfirming(m)} disabled={paying === m.member_id}
                                                 className="h-9 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-xs hover:bg-primary/90 disabled:opacity-60">
                                                 {paying === m.member_id ? 'Menyimpan…' : 'Konfirmasi Bayar'}
                                             </button>
@@ -111,6 +112,17 @@ export default function WajibOverviewPage() {
                     <Pager total={Math.max(1, Math.ceil((data?.members ?? []).length / 25))} />
                 </div>
             </section>
+
+            {confirming && (
+                <ConfirmPopup
+                    open
+                    title={`Konfirmasi pembayaran setoran wajib ${confirming.name}?`}
+                    description="Total Rp50.000 — otomatis dipecah: Rp45.000 operasional + Rp5.000 simpanan."
+                    actionLabel="Konfirmasi Bayar"
+                    onCancel={() => setConfirming(null)}
+                    onConfirm={() => { const m = confirming; setConfirming(null); confirmPay(m); }}
+                />
+            )}
         </div>
     );
 }

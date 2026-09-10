@@ -88,7 +88,7 @@ function DashboardPage() {
                             <div className="min-w-0 flex-1">
                                 <p className="text-sm font-semibold text-foreground">{p.member?.name ?? `Tiket #${p.id}`}</p>
                                 <p className="text-xs text-muted-foreground">
-                                    {p.location_type === 'jemput_rumah' ? 'Jemput ke rumah' : 'Antar ke gudang'}
+                                    {p.location_type === 'jemput_rumah' ? 'Jemput ke rumah' : p.location_type === 'jemput_pasar' ? 'Jemput ke pasar' : 'Antar ke gudang'}
                                     {p.notes ? ` — ${p.notes}` : ''}
                                 </p>
                             </div>
@@ -107,11 +107,13 @@ function PickupPage() {
     const { data, loading, error, reload } = useApi(`/pickups?status=${status}&per_page=25`);
     const rows = data ?? [];
 
-    // Step 2: klik aksi → buka tampilan timbangan dengan info detail anggota.
-    const [weighingMember, setWeighingMember] = useState(null);
+    // Step 2: klik aksi → buka tampilan timbangan untuk TIKET ini.
+    // (Bug "minta jemput nyangkut": dulu kirim p.member → WeighingForm bikin
+    // tiket baru dan tiket minta jemput asli tak pernah selesai.)
+    const [weighingTicket, setWeighingTicket] = useState(null);
 
-    if (weighingMember) {
-        return <WeighingFormPage initialMember={weighingMember} onBack={() => { setWeighingMember(null); reload(); }} />;
+    if (weighingTicket) {
+        return <WeighingFormPage initialPickup={weighingTicket} onBack={() => { setWeighingTicket(null); reload(); }} />;
     }
 
     return (
@@ -175,7 +177,7 @@ function PickupPage() {
                                     </span>
                                     {p.location_type && (
                                         <span className="rounded-full bg-slate-100 px-3 py-0.5 text-xs font-semibold text-muted-foreground">
-                                            {p.location_type === 'jemput_rumah' ? 'Jemput Rumah' : 'Gudang'}
+                                            {p.location_type === 'jemput_rumah' ? 'Jemput Rumah' : p.location_type === 'jemput_pasar' ? 'Jemput Pasar' : 'Gudang'}
                                         </span>
                                     )}
                                 </div>
@@ -190,7 +192,7 @@ function PickupPage() {
                             </div>
                             {p.status === 'menunggu' && p.member && (
                                 <button
-                                    onClick={() => setWeighingMember(p.member)}
+                                    onClick={() => setWeighingTicket(p)}
                                     className="flex h-11 items-center gap-2 rounded-xl bg-primary px-5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
                                 >
                                     <Scale size={16} /> Timbang Sekarang

@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import {
     ArrowDownToLine, CalendarClock, Check, Eye, EyeOff, Leaf, LogOut,
-    Plus, Repeat, Save, TrendingDown,
+    Plus, Save, TrendingDown,
     TrendingUp, UserPlus, WalletCards, X
 } from 'lucide-react';
 
@@ -157,14 +157,6 @@ const configs = {
         submitCls: 'bg-emerald-700 hover:bg-emerald-800 text-white',
         bg: 'bg-[#6bf1c2] text-emerald-900 border-b border-emerald-300',
     },
-    routine: {
-        title: 'Atur Penjemputan Rutin',
-        icon: Repeat,
-        tone: 'text-emerald-800',
-        submit: 'Simpan Rutinan',
-        submitCls: 'bg-emerald-700 hover:bg-emerald-800 text-white',
-        bg: 'bg-[#6bf1c2] text-emerald-900 border-b border-emerald-300',
-    },
 };
 
 export function FormPopup({ kind, onClose, onSuccess }) {
@@ -239,38 +231,41 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                     },
                 });
             } else if (kind === 'member') {
-                // Registrasi anggota oleh pengurus: user + member sekali jadi
-                res = await api('/members/register', {
+                // Akun anggota oleh pengurus: POST /users (role anggota + kategori rumah/pasar)
+                const memberTypes = fd.getAll('member_types');
+                if (!memberTypes.length) {
+                    throw { message: 'Pilih minimal satu kategori (Rumah / Pasar).' };
+                }
+                res = await api('/users', {
                     method: 'POST',
                     body: {
                         name: fd.get('memberName'),
                         username: fd.get('username'),
                         email: `${fd.get('username')}@anggota.local`,
                         password: fd.get('password'),
-                        member_type: fd.get('member_type'),
+                        role: 'anggota',
+                        member_types: memberTypes,
                         phone: fd.get('phone'),
                         address: fd.get('address') || '-',
                     },
                 });
             } else if (kind === 'requestPickup') {
+                // Lokasi jemput mengikuti kategori anggota (rumah / pasar / keduanya).
+                const cats = user?.member?.categories?.length
+                    ? user.member.categories
+                    : [user?.member?.category?.name ?? 'rumah'];
+                const locations = cats.filter(c => c === 'rumah' || c === 'pasar')
+                    .map(c => (c === 'rumah' ? 'jemput_rumah' : 'jemput_pasar'));
                 res = await api('/pickups', {
                     method: 'POST',
                     body: {
                         member_id: user?.member?.id,
-                        location_type: 'jemput_rumah',
+                        location_type: locations.length === 1
+                            ? locations[0]
+                            : (fd.get('location_type') || 'jemput_rumah'),
                         scheduled_at: fd.get('scheduled_at'),
                         notes: fd.get('note') || null,
                     },
-                });
-            } else if (kind === 'routine') {
-                const days = fd.getAll('days').map(Number);
-                const slots = fd.getAll('slots');
-                if (!days.length || !slots.length) {
-                    throw { message: 'Pilih minimal satu hari dan satu waktu penjemputan.' };
-                }
-                res = await api('/pickup-schedules', {
-                    method: 'POST',
-                    body: { days, slots },
                 });
             } else if (kind === 'distribution') {
                 // Simpan draft lalu publish — saldo anggota langsung dikredit (alur.md).
@@ -349,7 +344,18 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                             <Field name="username" label="Username" placeholder="username_koperasi" />
                         </div>
                         <div className="grid gap-3 sm:grid-cols-2">
-                            <SelectField name="member_type" label="Kategori Anggota" options={['rumah', 'pasar']} />
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-xs font-semibold text-foreground/80">Kategori (boleh keduanya)</span>
+                                <div className="flex gap-2">
+                                    {['rumah', 'pasar'].map(c => (
+                                        <label key={c} className="flex flex-1 cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-xs font-semibold capitalize text-foreground has-[:checked]:border-primary has-[:checked]:bg-accent">
+                                            <input type="checkbox" name="member_types" value={c} className="accent-primary" />
+                                            {c}
+                                        </label>
+                                    ))}
+                                </div>
+                                <span className="text-[11px] text-muted-foreground">Menentukan lokasi penjemputan sampah anggota.</span>
+                            </div>
                             <Field name="phone" label="No. Telepon" placeholder="08xxxxxxxxxx" />
                         </div>
                         <TextAreaField name="address" label="Alamat" placeholder="Alamat lengkap domisili" rows={2} />
@@ -404,36 +410,29 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                             type="datetime-local"
                             min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
                         />
+                        {(() => {
+                            const cats = user?.member?.categories?.length
+                                ? user.member.categories
+                                : [user?.member?.category?.name ?? 'rumah'];
+                            const locations = cats.filter(c => c === 'rumah' || c === 'pasar');
+                            // Satu kategori → lokasi tetap; dua kategori → anggota pilih rumah/pasar.
+                            if (locations.length < 2) return null;
+                            return (
+                                <div className="flex flex-col gap-1.5">
+                                    <label htmlFor="location_type" className="text-xs font-semibold text-foreground/80">Lokasi Penjemputan</label>
+                                    <select
+                                        required
+                                        id="location_type"
+                                        name="location_type"
+                                        className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+                                    >
+                                        <option value="jemput_rumah">Jemput ke Rumah</option>
+                                        <option value="jemput_pasar">Jemput ke Pasar</option>
+                                    </select>
+                                </div>
+                            );
+                        })()}
                         <TextAreaField name="note" label="Catatan" placeholder="Contoh: sampah di depan pagar..." rows={2} required={false} />
-                    </>
-                )}
-
-                {kind === 'routine' && (
-                    <>
-                        <div className="flex flex-col gap-2">
-                            <span className="text-xs font-semibold text-foreground/80">Hari Rutinan</span>
-                            <div className="flex flex-wrap gap-2">
-                                {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((d, i) => (
-                                    <label key={d} className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-foreground has-[:checked]:border-primary has-[:checked]:bg-accent">
-                                        <input type="checkbox" name="days" value={i} className="accent-primary" />
-                                        {d}
-                                    </label>
-                                ))}
-                            </div>
-                            <span className="text-[11px] text-muted-foreground">Harian = centang semua hari · Mingguan = satu hari · Custom = kombinasi apa saja.</span>
-                        </div>
-                        <div className="flex flex-col gap-2">
-                            <span className="text-xs font-semibold text-foreground/80">Waktu Penjemputan (boleh lebih dari satu)</span>
-                            <div className="flex flex-wrap gap-2">
-                                {['pagi', 'siang', 'sore'].map(s => (
-                                    <label key={s} className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-semibold text-foreground capitalize has-[:checked]:border-primary has-[:checked]:bg-accent">
-                                        <input type="checkbox" name="slots" value={s} className="accent-primary" />
-                                        {s}
-                                    </label>
-                                ))}
-                            </div>
-                            <span className="text-[11px] text-muted-foreground">Pagi ~07.00 · Siang ~12.00 · Sore ~16.00</span>
-                        </div>
                     </>
                 )}
 

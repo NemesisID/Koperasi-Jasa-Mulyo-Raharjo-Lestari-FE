@@ -50,7 +50,7 @@ function HistoryModal({ member, onClose }) {
                             {rows.map(p => (
                                 <tr key={p.id} className="hover:bg-secondary/40">
                                     <td className="px-4 py-3 text-muted-foreground">{dfmt(p.completed_at ?? p.scheduled_at)}</td>
-                                    <td className="px-4 py-3">{p.location_type === 'jemput_rumah' ? 'Jemput rumah' : 'Gudang'}</td>
+                                    <td className="px-4 py-3">{p.location_type === 'jemput_rumah' ? 'Jemput rumah' : p.location_type === 'jemput_pasar' ? 'Jemput pasar' : 'Gudang'}</td>
                                     <td className="px-4 py-3 text-muted-foreground">{p.officer?.name ?? '-'}</td>
                                     <td className="px-4 py-3 font-semibold">{rp(p.total_gross)}</td>
                                     <td className="px-4 py-3 font-bold text-primary">{rp(p.total_net)}</td>
@@ -137,7 +137,7 @@ export default function PickupMonitorPage() {
                                         <span className="inline-flex items-center gap-1"><MapPin size={13} className="shrink-0 text-primary" />{p.member?.address ?? '-'}</span>
                                     </td>
                                     <td className="px-6 py-4 text-muted-foreground">{dfmt(p.scheduled_at)}</td>
-                                    <td className="px-6 py-4">{p.location_type === 'jemput_rumah' ? 'Jemput Rumah' : 'Gudang'}</td>
+                                    <td className="px-6 py-4">{p.location_type === 'jemput_rumah' ? 'Jemput Rumah' : p.location_type === 'jemput_pasar' ? 'Jemput Pasar' : 'Gudang'}</td>
                                     <td className="px-6 py-4 text-muted-foreground">{p.officer?.name ?? '-'}</td>
                                     <td className="px-6 py-4">
                                         <span className={cn('rounded-full px-3 py-0.5 text-xs font-semibold', STATUS_STYLE[p.status])}>{p.status}</span>

@@ -11,18 +11,20 @@ import { api, useApi, rp } from '@/lib/api';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
-export default function WeighingFormPage({ initialMember = null, onBack = null }) {
+export default function WeighingFormPage({ initialPickup = null, onBack = null }) {
     const { data: membersData, loading: loadingMembers } = useApi('/members?status=aktif&per_page=200');
     const { data: categoriesData, loading: loadingCats } = useApi('/trash-categories');
 
     const members = membersData ?? [];
     const categories = (categoriesData ?? []).filter(c => c.is_active !== false);
 
-    const [memberSearch, setMemberSearch] = useState(initialMember ? `${initialMember.member_code} - ${initialMember.name}` : '');
-    const [selectedMemberId, setSelectedMemberId] = useState(initialMember?.id ?? '');
-    // Step 2 dari daftar pickup: lokasi otomatis jemput rumah; manual: default gudang.
-    const [location, setLocation] = useState(initialMember ? 'jemput_rumah' : 'gudang');
-    const [isSorted, setIsSorted] = useState(true); // true = bersih/terpilah, false = kotor
+    // Step-2 dari daftar pickup: semua data diambil dari TIKET (member, lokasi,
+    // kondisi) — tiket lama yang ditimbang, bukan tiket baru (fix nyangkut).
+    const ticketMember = initialPickup?.member ?? null;
+    const [memberSearch, setMemberSearch] = useState(ticketMember ? `${ticketMember.member_code} - ${ticketMember.name}` : '');
+    const [selectedMemberId, setSelectedMemberId] = useState(ticketMember?.id ?? '');
+    const [location, setLocation] = useState(initialPickup?.location_type ?? 'gudang');
+    const [isSorted, setIsSorted] = useState(initialPickup ? Boolean(initialPickup.is_sorted) : true); // true = bersih/terpilah, false = kotor
     const [rows, setRows] = useState([{ categoryId: '', quantity: '' }]);
     const [receipt, setReceipt] = useState(null);
     const [submitting, setSubmitting] = useState(false);
@@ -60,8 +62,10 @@ export default function WeighingFormPage({ initialMember = null, onBack = null }
     const getPriceOf = (catId) => {
         const cat = categories.find(c => String(c.id) === String(catId));
         if (!cat) return 0;
-        const base = isSorted ? Number(cat.price_sorted || 0) : Number(cat.price_unsorted || 0);
-        if (location === 'jemput_rumah') {
+        // Sesuai engine BE: sorted = harga jual, unsorted = harga kotor;
+        // lokasi jemput (rumah/pasar) dipotong biaya antar (logam 2.000 / lain 300).
+        const base = isSorted ? Number(cat.price_sell || 0) : Number(cat.price_unsorted || 0);
+        if (String(location).startsWith('jemput')) {
             const deduction = cat.type === 'logam' ? 2000 : 300;
             return Math.max(0, base - deduction);
         }
@@ -86,7 +90,7 @@ export default function WeighingFormPage({ initialMember = null, onBack = null }
     };
 
     // Filtered members for dropdown/datalist
-    const matchedMember = initialMember ?? members.find(m =>
+    const matchedMember = ticketMember ?? members.find(m =>
         String(m.id) === String(selectedMemberId) ||
         m.name.toLowerCase() === memberSearch.trim().toLowerCase() ||
         m.member_code.toLowerCase() === memberSearch.trim().toLowerCase()
@@ -122,18 +126,22 @@ export default function WeighingFormPage({ initialMember = null, onBack = null }
         setSubmitting(true);
 
         try {
-            // Step 1: Create pickup ticket
-            const ticketRes = await api('/pickups', {
-                method: 'POST',
-                body: {
-                    member_id: targetMember.id,
-                    location_type: location,
-                    is_sorted: isSorted,
-                },
-            });
-
-            const pickup = ticketRes.data;
-            const pickupId = pickup.id;
+            // Step 1: tiket. Dari daftar pickup (minta jemput) → timbang TIKET ITU,
+            // jangan buat tiket baru (penyebab permintaan anggota nyangkut di menunggu).
+            let pickupId;
+            if (initialPickup) {
+                pickupId = initialPickup.id;
+            } else {
+                const ticketRes = await api('/pickups', {
+                    method: 'POST',
+                    body: {
+                        member_id: targetMember.id,
+                        location_type: location,
+                        is_sorted: isSorted,
+                    },
+                });
+                pickupId = ticketRes.data.id;
+            }
 
             // Step 2: Submit weigh items
             const payloadItems = validRows.map(r => {
@@ -176,7 +184,7 @@ export default function WeighingFormPage({ initialMember = null, onBack = null }
                 id: weighRes.data?.receipt_number || `NOTA-${String(pickupId).padStart(5, '0')}`,
                 member: `${targetMember.name} (${targetMember.member_code})`,
                 date: new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' }),
-                location: location === 'gudang' ? 'Diantar ke Gudang' : 'Dijemput di Rumah/Pasar',
+                                location: location === 'gudang' ? 'Diantar ke Gudang' : location === 'jemput_pasar' ? 'Dijemput di Pasar' : 'Dijemput di Rumah',
                 items: receiptItems,
                 gross,
                 fee,
@@ -247,7 +255,7 @@ export default function WeighingFormPage({ initialMember = null, onBack = null }
                             <div className="sm:col-span-2 lg:col-span-3">
                                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Lokasi Penimbangan</p>
                                 <p className="mt-0.5 text-sm font-semibold text-foreground">
-                                    {location === 'jemput_rumah' ? 'Dijemput di rumah anggota' : 'Diantar ke gudang'}
+                                    {location === 'jemput_rumah' ? 'Dijemput di rumah anggota' : location === 'jemput_pasar' ? 'Dijemput di pasar anggota' : 'Diantar ke gudang'}
                                 </p>
                             </div>
                         </div>
@@ -265,7 +273,7 @@ export default function WeighingFormPage({ initialMember = null, onBack = null }
                     <div className="mt-4 flex flex-col gap-4">
                         {/* Toggle kebersihan (lokasi sudah ditentukan: manual = gudang, step-2 = jemput rumah) */}
                         <div className="grid gap-4 sm:grid-cols-2">
-                            {!initialMember && (
+                            {!ticketMember && (
                                 <div className="flex flex-col gap-1.5">
                                     <span className="text-xs font-semibold text-foreground/80">Cari Anggota</span>
                                     <input

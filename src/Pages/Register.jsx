@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import { api } from '@/lib/api';
-import { Building2, Leaf, UserRound, LockKeyhole, Mail, Phone, Home, MapPin, UserPlus } from 'lucide-react';
+import { Building2, Leaf, UserRound, LockKeyhole, Mail, Phone, MapPin, UserPlus } from 'lucide-react';
 
 const inputIcon = 'pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground';
 const inputBase = 'h-12 w-full rounded-xl border border-input/80 bg-background pl-10 pr-3 text-sm text-foreground placeholder:text-muted-foreground transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none';
@@ -22,12 +22,19 @@ function Field({ id, label, icon: Icon, ...props }) {
 function RegisterCard() {
     const [form, setForm] = useState({
         name: '', username: '', email: '', phone: '',
-        address: '', member_type: 'rumah', password: '', password_confirmation: '',
+        address: '', member_types: ['rumah'], password: '', password_confirmation: '',
     });
     const [errors, setErrors] = useState({});
     const [processing, setProcessing] = useState(false);
     const [done, setDone] = useState(false);
     const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+    // Kategori anggota (rumah/pasar) — minimal satu, boleh keduanya.
+    const toggleType = (t) => setForm(f => ({
+        ...f,
+        member_types: f.member_types.includes(t)
+            ? f.member_types.filter(c => c !== t)
+            : [...f.member_types, t],
+    }));
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -84,18 +91,24 @@ function RegisterCard() {
                     value={form.phone} onChange={set('phone')} required autoComplete="tel" placeholder="08xxxxxxxxxx" />
                 {errors.phone && <p role="alert" className="-mt-2 text-xs font-medium text-destructive">{errors.phone[0]}</p>}
 
-                <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground" htmlFor="member_type">
-                    Jenis Anggota
-                    <span className="relative block">
-                        <Home size={17} className={inputIcon} />
-                        <select id="member_type" value={form.member_type} onChange={set('member_type')}
-                            className={inputBase + ' appearance-none'}>
-                            <option value="rumah">Rumah (pembayaran per bulan)</option>
-                            <option value="pasar">Pasar (pembayaran per hari)</option>
-                        </select>
-                    </span>
-                </label>
-                {errors.member_type && <p role="alert" className="-mt-2 text-xs font-medium text-destructive">{errors.member_type[0]}</p>}
+                <div className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
+                    <span id="member_types-label">Jenis Anggota <span className="text-xs font-normal text-muted-foreground">(minimal satu, boleh keduanya)</span></span>
+                    <div className="flex gap-2" role="group" aria-labelledby="member_types-label">
+                        {[['rumah', 'Rumah'], ['pasar', 'Pasar']].map(([t, label]) => (
+                            <label key={t} className="flex flex-1 cursor-pointer items-center gap-2 rounded-xl border border-input/80 bg-background px-3.5 py-3 text-sm font-semibold text-foreground transition-all has-[:checked]:border-primary has-[:checked]:bg-accent has-[:checked]:text-primary">
+                                <input
+                                    type="checkbox"
+                                    checked={form.member_types.includes(t)}
+                                    onChange={() => toggleType(t)}
+                                    className="accent-primary"
+                                />
+                                {label}
+                            </label>
+                        ))}
+                    </div>
+                    <span className="text-xs text-muted-foreground">Menentukan lokasi penjemputan sampah Anda.</span>
+                </div>
+                {errors.member_types && <p role="alert" className="-mt-2 text-xs font-medium text-destructive">{errors.member_types[0]}</p>}
 
                 <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground" htmlFor="address">
                     Alamat

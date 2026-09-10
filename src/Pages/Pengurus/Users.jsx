@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Eye, Pencil, Search, ShieldCheck, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { PageHeader, StatCard, Pager } from '@/Components/Koperasi/ManagerUI';
-import { Modal } from '@/Components/Koperasi/Popups';
+import { ConfirmPopup, Modal } from '@/Components/Koperasi/Popups';
 import { api, useApi, rp, dfmt } from '@/lib/api';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
@@ -18,31 +18,38 @@ const inputCls = 'h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 
 
 function UserForm({ user, onDone, onCancel }) {
     const isEdit = Boolean(user?.id);
+    // Kategori anggota (rumah/pasar) — dipilih minimal satu; keduanya boleh.
+    const initialTypes = user?.member?.categories?.length
+        ? user.member.categories
+        : (user?.member?.category?.name ? [user.member.category.name] : []);
     const [form, setForm] = useState({
         name: user?.name ?? '', username: user?.username ?? '', email: user?.email ?? '',
         password: '', role: user?.role ?? 'petugas', phone: user?.phone ?? '', address: user?.address ?? '',
-        member_id: user?.member?.id ?? '',
+        member_types: initialTypes,
     });
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
 
-    // Daftar anggota hanya diambil saat role akun adalah anggota.
-    const { data: members } = useApi(form.role === 'anggota' ? '/members?status=aktif&per_page=200' : null);
-    const memberList = members ?? [];
-    // Saat edit, pastikan member saat ini tetap tampil walau tidak aktif / tidak ada di daftar.
-    const memberOptions = user?.member && !memberList.some(m => String(m.id) === String(user.member.id))
-        ? [user.member, ...memberList]
-        : memberList;
+    const toggleType = (t) => setForm(f => ({
+        ...f,
+        member_types: f.member_types.includes(t)
+            ? f.member_types.filter(c => c !== t)
+            : [...f.member_types, t],
+    }));
 
     const submit = async (e) => {
         e.preventDefault();
+        if (form.role === 'anggota' && !form.member_types.length) {
+            setError('Pilih minimal satu kategori anggota (Rumah / Pasar).');
+            return;
+        }
         setSaving(true); setError('');
         try {
-            const { member_id, ...rest } = form;
+            const { member_types, ...rest } = form;
             const body = {
                 ...rest,
                 password: form.password || undefined,
-                member_id: form.role === 'anggota' ? (Number(member_id) || undefined) : undefined,
+                member_types: form.role === 'anggota' ? member_types : undefined,
             };
             const res = isEdit
                 ? await api(`/users/${user.id}`, { method: 'PUT', body })
@@ -72,24 +79,34 @@ function UserForm({ user, onDone, onCancel }) {
                     <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Role
                         <select required value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className={inputCls}>
                             <option value="petugas">Petugas</option>
-                            <option value="pengepul">Pengepul</option>
                             <option value="pengurus">Pengurus</option>
                             <option value="ketua">Ketua</option>
                             <option value="anggota">Anggota</option>
                         </select>
                     </label>
                     {form.role === 'anggota' && (
-                        <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Anggota Terhubung
-                            <select required value={form.member_id} onChange={e => setForm(f => ({ ...f, member_id: e.target.value }))}
-                                className={inputCls}>
-                                <option value="">Pilih anggota…</option>
-                                {memberOptions.map(m => (
-                                    <option key={m.id} value={m.id}>
-                                        {m.member_code} — {m.name}{m.address ? ` (${m.address})` : ''}
-                                    </option>
+                        <div className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">
+                            <span>Kategori Anggota <span className="font-normal text-muted-foreground">(minimal satu, boleh keduanya)</span></span>
+                            <div className="flex gap-2">
+                                {['rumah', 'pasar'].map(t => (
+                                    <label key={t} className={cn(
+                                        'flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-semibold capitalize transition-all',
+                                        form.member_types.includes(t)
+                                            ? 'border-primary bg-accent text-primary'
+                                            : 'border-slate-200 bg-slate-50/50 text-foreground'
+                                    )}>
+                                        <input
+                                            type="checkbox"
+                                            checked={form.member_types.includes(t)}
+                                            onChange={() => toggleType(t)}
+                                            className="accent-primary"
+                                        />
+                                        {t}
+                                    </label>
                                 ))}
-                            </select>
-                        </label>
+                            </div>
+                            <span className="text-[11px] font-normal text-muted-foreground">Menentukan lokasi penjemputan sampah anggota (rumah / pasar).</span>
+                        </div>
                     )}
                     <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Username
                         <input required value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} className={inputCls} />
@@ -129,6 +146,7 @@ export default function UsersPage({ showStatus }) {
     const [search, setSearch] = useState('');
     const [editing, setEditing] = useState(null);
     const [detail, setDetail] = useState(null);
+    const [deleting, setDeleting] = useState(null);
 
     const rows = (data ?? []).filter(u =>
         (role === 'semua' || u.role === role) &&
@@ -170,7 +188,6 @@ export default function UsersPage({ showStatus }) {
                             <option value="ketua">Ketua</option>
                             <option value="pengurus">Pengurus</option>
                             <option value="petugas">Petugas</option>
-                            <option value="pengepul">Pengepul</option>
                             <option value="anggota">Anggota</option>
                         </select>
                     </div>
@@ -204,13 +221,7 @@ export default function UsersPage({ showStatus }) {
                                         <div className="flex justify-end gap-1">
                                             <button onClick={() => setDetail(u)} aria-label={`Detail ${u.name}`} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-primary"><Eye size={16} /></button>
                                             <button onClick={() => setEditing(u)} aria-label={`Edit ${u.name}`} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-primary"><Pencil size={16} /></button>
-                                            <button onClick={async () => {
-                                                if (!confirm(`Hapus akun ${u.name}? Tindakan ini tidak dapat dibatalkan.`)) return;
-                                                try {
-                                                    const res = await api(`/users/${u.id}`, { method: 'DELETE' });
-                                                    showStatus('Akun Dihapus', res?.message || 'Akun berhasil dihapus.'); reload();
-                                                } catch (err) { showStatus('Gagal Menghapus', err.message); }
-                                            }} aria-label={`Hapus ${u.name}`} className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-destructive"><Trash2 size={16} /></button>
+                                            <button onClick={() => setDeleting(u)} aria-label={`Hapus ${u.name}`} className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-destructive"><Trash2 size={16} /></button>
                                         </div>
                                     </td>
                                 </tr>
@@ -228,6 +239,25 @@ export default function UsersPage({ showStatus }) {
                 <UserForm user={editing}
                     onCancel={() => setEditing(null)}
                     onDone={(msg) => { setEditing(null); reload(); showStatus('Akun Tersimpan', msg); }} />
+            )}
+
+            {deleting && (
+                <ConfirmPopup
+                    open
+                    title={`Hapus akun ${deleting.name}?`}
+                    description="Tindakan ini tidak dapat dibatalkan."
+                    actionLabel="Hapus"
+                    tone="destructive"
+                    onCancel={() => setDeleting(null)}
+                    onConfirm={async () => {
+                        const target = deleting;
+                        setDeleting(null);
+                        try {
+                            const res = await api(`/users/${target.id}`, { method: 'DELETE' });
+                            showStatus('Akun Dihapus', res?.message || 'Akun berhasil dihapus.'); reload();
+                        } catch (err) { showStatus('Gagal Menghapus', err.message); }
+                    }}
+                />
             )}
 
             {detail && (

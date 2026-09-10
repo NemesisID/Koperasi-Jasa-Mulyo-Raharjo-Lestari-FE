@@ -3,14 +3,14 @@ import { Navigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import {
     Banknote, CalendarClock, CalendarDays, ChevronLeft, CirclePlus,
-    Landmark, Leaf, Plus, Repeat, TrendingDown, TrendingUp,
-    UserRound, WalletCards
+    Landmark, Leaf, Plus, TrendingDown, TrendingUp,
+    UserRound, WalletCards, X
 } from 'lucide-react';
 import { MemberShell } from '@/Components/Koperasi/MemberShell';
 import {
     DataPanel, FilterButton, MetricCard, PageTitle, Status
 } from '@/Components/Koperasi/MemberUI';
-import { FormPopup, StatusPopup } from '@/Components/Koperasi/Popups';
+import { FormPopup, Modal, StatusPopup } from '@/Components/Koperasi/Popups';
 import { useApi, api, rp, dfmt } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
@@ -197,14 +197,101 @@ function SukarelaPage() {
 
 // ─── 3. Riwayat Pengambilan Sampah Sub-page ────────────────────
 // Anggota melihat pickup miliknya (backend otomatis filter own) + minta
-// jemput pada tanggal & jam tertentu + atur rutinan harian/mingguan/custom.
-const DAY_NAMES = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+// jemput pada tanggal & jam tertentu. Jadwal rutin TIDAK bisa diatur
+// anggota — pakem dari koperasi (kartu info di bawah).
+const locLabel = (t) => t === 'jemput_rumah' ? 'Jemput Rumah' : t === 'jemput_pasar' ? 'Jemput Pasar' : 'Antar Gudang';
+
+// Kategori anggota → opsi lokasi jemput (rumah / pasar / keduanya).
+function memberLocations(user) {
+    const cats = user?.member?.categories?.length
+        ? user.member.categories
+        : [user?.member?.category?.name ?? 'rumah'];
+    return cats.filter(c => c === 'rumah' || c === 'pasar')
+        .map(c => (c === 'rumah' ? 'jemput_rumah' : 'jemput_pasar'));
+}
+
+// Popup alasan jemput ulang (revisi: prompt JS → popup).
+function RequestAgainModal({ user, onClose, onDone }) {
+    const [error, setError] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const submit = async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.currentTarget);
+        const reason = fd.get('reason');
+        if (!reason?.trim()) { setError('Alasan wajib diisi.'); return; }
+        const locations = memberLocations(user);
+        setSaving(true);
+        try {
+            await api('/pickups', {
+                method: 'POST',
+                body: {
+                    member_id: user?.member?.id,
+                    location_type: locations.length === 1 ? locations[0] : (fd.get('location_type') || 'jemput_rumah'),
+                    notes: `Request jemput ulang hari yang sama — ${reason}`,
+                },
+            });
+            onDone('Permintaan jemput ulang berhasil dikirim ke petugas.');
+        } catch (err) {
+            const fieldErrs = err.errors && Object.values(err.errors)[0]?.[0];
+            setError(fieldErrs || err.message || 'Gagal mengirim permintaan.');
+        } finally { setSaving(false); }
+    };
+
+    const locations = memberLocations(user);
+
+    return (
+        <Modal open onClose={onClose}>
+            <div className="flex items-center justify-between px-6 py-4 bg-accent/60 border-b border-border/60">
+                <h2 className="text-base font-bold text-primary">Minta Jemput Ulang</h2>
+                <button type="button" onClick={onClose} aria-label="Tutup"
+                    className="rounded-lg p-1 text-muted-foreground hover:bg-black/5 hover:text-foreground transition-colors">
+                    <X size={18} />
+                </button>
+            </div>
+            <form onSubmit={submit} className="flex flex-col gap-4 p-6 bg-card">
+                <div className="flex flex-col gap-1.5">
+                    <label htmlFor="reason" className="text-xs font-semibold text-foreground/80">Alasan</label>
+                    <textarea
+                        required
+                        id="reason"
+                        name="reason"
+                        rows={2}
+                        placeholder="Contoh: ada hajatan, sampah menumpuk..."
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-sm text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15 resize-none"
+                    />
+                </div>
+                {locations.length > 1 && (
+                    <div className="flex flex-col gap-1.5">
+                        <label htmlFor="location_type" className="text-xs font-semibold text-foreground/80">Lokasi Penjemputan</label>
+                        <select id="location_type" name="location_type"
+                            className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15">
+                            <option value="jemput_rumah">Jemput ke Rumah</option>
+                            <option value="jemput_pasar">Jemput ke Pasar</option>
+                        </select>
+                    </div>
+                )}
+                {error && <p className="text-xs font-medium text-destructive">{error}</p>}
+                <div className="flex gap-3 pt-2">
+                    <button type="button" onClick={onClose}
+                        className="h-11 flex-1 rounded-xl border border-border bg-card text-sm font-semibold text-foreground/80 hover:bg-secondary transition-all">
+                        Batal
+                    </button>
+                    <button type="submit" disabled={saving}
+                        className="h-11 flex-[1.5] rounded-xl bg-primary text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-60">
+                        {saving ? 'Mengirim...' : 'Kirim Permintaan'}
+                    </button>
+                </div>
+            </form>
+        </Modal>
+    );
+}
 
 function PickupHistoryPage({ openForm }) {
     const { user } = useAuth();
     const { data, loading, error } = useApi('/pickups?per_page=50');
-    const { data: schedules, reload: reloadSchedules } = useApi('/pickup-schedules');
-    const [reqState, setReqState] = useState('');
+    const [again, setAgain] = useState(null);
+    const [done, setDone] = useState('');
     const rows = data ?? [];
 
     const isSameDay = (iso) => {
@@ -214,72 +301,27 @@ function PickupHistoryPage({ openForm }) {
         return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
     };
 
-    const requestAgain = async (p) => {
-        const reason = prompt('Alasan permintaan jemput ulang (contoh: ada hajatan, sampah menumpuk):');
-        if (!reason) return;
-        setReqState(p.id);
-        try {
-            await api('/pickups', {
-                method: 'POST',
-                body: {
-                    member_id: user?.member?.id,
-                    location_type: 'jemput_rumah',
-                    is_sorted: p.is_sorted,
-                    notes: `Request jemput ulang hari yang sama — ${reason}`,
-                },
-            });
-            alert('Permintaan jemput ulang berhasil dikirim ke petugas.');
-        } catch (err) {
-            alert(err.message || 'Gagal mengirim permintaan.');
-        } finally { setReqState(''); }
-    };
-
-    const deleteSchedule = async (s) => {
-        if (!confirm('Hapus rutinan ini?')) return;
-        try {
-            await api(`/pickup-schedules/${s.id}`, { method: 'DELETE' });
-            reloadSchedules();
-        } catch (err) {
-            alert(err.message || 'Gagal menghapus rutinan.');
-        }
-    };
-
     return (
         <div className="flex flex-col gap-6">
             <PageTitle
                 title="Riwayat Pengambilan Sampah"
-                description="Riwayat sampah Anda yang diambil petugas. Minta jemput untuk jadwal tertentu, atau atur penjemputan rutin."
+                description="Riwayat sampah Anda yang diambil petugas. Minta jemput untuk jadwal tertentu."
                 action={
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => openForm('routine')}
-                            className="flex h-10 items-center gap-2 rounded-xl border border-primary/30 bg-accent px-4 text-xs font-semibold text-primary shadow-sm transition-all hover:bg-accent/70"
-                        >
-                            <Repeat size={16} />
-                            <span>Rutin</span>
-                        </button>
-                        <button
-                            onClick={() => openForm('requestPickup')}
-                            className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
-                        >
-                            <CalendarClock size={16} />
-                            <span>Minta Jemput</span>
-                        </button>
-                    </div>
+                    <button
+                        onClick={() => openForm('requestPickup')}
+                        className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
+                    >
+                        <CalendarClock size={16} />
+                        <span>Minta Jemput</span>
+                    </button>
                 }
             />
-            {(schedules ?? []).length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
-                    <Repeat size={16} className="text-emerald-700" />
-                    <span className="text-xs font-bold text-emerald-800">Rutinan aktif:</span>
-                    {(schedules ?? []).map(s => (
-                        <span key={s.id} className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-900 shadow-xs">
-                            {(s.days ?? []).map(d => DAY_NAMES[d]).join(', ')} · {(s.slots ?? []).join('/')}
-                            <button onClick={() => deleteSchedule(s)} className="text-rose-500 hover:text-rose-700" aria-label={`Hapus rutinan ${(s.slots ?? []).join('/')}`}>✕</button>
-                        </span>
-                    ))}
-                </div>
-            )}
+            <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+                <CalendarDays size={16} className="mt-0.5 shrink-0 text-emerald-700" />
+                <p className="text-xs leading-relaxed text-emerald-900">
+                    <strong>Jadwal pakem:</strong> jadwal pengambilan sampah ditetapkan tetap oleh koperasi dan tidak dapat diatur sendiri oleh anggota. Untuk kebutuhan di luar jadwal, gunakan tombol <strong>Minta Jemput</strong>.
+                </p>
+            </div>
             <DataPanel
                 title="Riwayat Pengambilan"
                 headers={['Tanggal', 'Lokasi', 'Status', 'Anda Terima', 'Aksi']}
@@ -289,18 +331,26 @@ function PickupHistoryPage({ openForm }) {
                         ? [[<span key="e" className="text-muted-foreground">{error ? 'Gagal memuat data.' : 'Belum ada pengambilan sampah.'}</span>, '', '', '', '']]
                         : rows.map(p => [
                             <span key="d" className="text-muted-foreground">{dfmt(p.completed_at ?? p.scheduled_at)}</span>,
-                            <span key="loc" className="font-semibold">{p.location_type === 'jemput_rumah' ? 'Jemput Rumah' : 'Antar Gudang'}</span>,
+                            <span key="loc" className="font-semibold">{locLabel(p.location_type)}</span>,
                             <Status key="s" kind={p.status === 'selesai' ? 'success' : p.status === 'batal' ? 'danger' : 'waiting'}>{p.status}</Status>,
                             <strong key="net" className={cn('font-bold', Number(p.total_net) > 0 ? 'text-emerald-700' : 'text-muted-foreground')}>{Number(p.total_net) > 0 ? rp(p.total_net) : '-'}</strong>,
                             p.status === 'selesai' && isSameDay(p.completed_at ?? p.scheduled_at)
-                                ? <button key="a" onClick={() => requestAgain(p)} disabled={reqState === p.id}
-                                    className="h-8 rounded-xl bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50">
-                                    {reqState === p.id ? 'Mengirim…' : 'Jemput Ulang'}
+                                ? <button key="a" onClick={() => setAgain(p)}
+                                    className="h-8 rounded-xl bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90">
+                                    Jemput Ulang
                                 </button>
                                 : <span key="a" className="text-xs text-muted-foreground">-</span>
                         ])}
                 footer={`Menampilkan ${rows.length} pengambilan`}
             />
+            {again && (
+                <RequestAgainModal
+                    user={user}
+                    onClose={() => setAgain(null)}
+                    onDone={msg => { setAgain(null); setDone(msg); }}
+                />
+            )}
+            <StatusPopup open={Boolean(done)} title={done} onClose={() => setDone('')} />
         </div>
     );
 }
