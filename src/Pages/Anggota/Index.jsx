@@ -104,7 +104,7 @@ function DashboardPage() {
 }
 
 // ─── 2. Simpanan Wajib Sub-page ───────────────────────────────
-function WajibPage({ openForm }) {
+function WajibPage() {
     const { data, loading } = useApi('/savings?label=WAJIB');
     const rows = data ?? [];
     const total = rows.reduce((s, r) => s + Number(r.jumlah), 0);
@@ -114,15 +114,6 @@ function WajibPage({ openForm }) {
             <PageTitle
                 title="Simpanan Wajib"
                 description="Setoran wajib bulanan yang diakumulasi untuk modal bersama koperasi."
-                action={
-                    <button
-                        onClick={() => openForm('waste')}
-                        className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
-                    >
-                        <CirclePlus size={16} />
-                        <span>Setor Sampah</span>
-                    </button>
-                }
             />
 
             <div className="grid gap-5 md:grid-cols-3">
@@ -261,16 +252,27 @@ function RequestAgainModal({ user, onClose, onDone }) {
                         className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-sm text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15 resize-none"
                     />
                 </div>
-                {locations.length > 1 && (
-                    <div className="flex flex-col gap-1.5">
-                        <label htmlFor="location_type" className="text-xs font-semibold text-foreground/80">Lokasi Penjemputan</label>
-                        <select id="location_type" name="location_type"
-                            className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15">
-                            <option value="jemput_rumah">Jemput ke Rumah</option>
-                            <option value="jemput_pasar">Jemput ke Pasar</option>
-                        </select>
-                    </div>
-                )}
+                {(() => {
+                    // Satu kategori → dropdown read-only; dua → anggota pilih.
+                    const fixed = locations.length <= 1 ? (locations[0] ?? 'jemput_rumah') : null;
+                    return (
+                        <div className="flex flex-col gap-1.5">
+                            <label htmlFor="location_type" className="text-xs font-semibold text-foreground/80">Lokasi Penjemputan</label>
+                            <select id="location_type" name="location_type"
+                                disabled={Boolean(fixed)}
+                                value={fixed ?? undefined}
+                                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-70">
+                                {fixed
+                                    ? <option value={fixed}>{fixed === 'jemput_rumah' ? 'Jemput ke Rumah' : 'Jemput ke Pasar'}</option>
+                                    : <>
+                                        <option value="jemput_rumah">Jemput ke Rumah</option>
+                                        <option value="jemput_pasar">Jemput ke Pasar</option>
+                                    </>}
+                            </select>
+                            {fixed && <span className="text-[11px] text-muted-foreground">Sesuai kategori Anda — hanya tersedia lokasi ini.</span>}
+                        </div>
+                    );
+                })()}
                 {error && <p className="text-xs font-medium text-destructive">{error}</p>}
                 <div className="flex gap-3 pt-2">
                     <button type="button" onClick={onClose}
@@ -307,13 +309,22 @@ function PickupHistoryPage({ openForm }) {
                 title="Riwayat Pengambilan Sampah"
                 description="Riwayat sampah Anda yang diambil petugas. Minta jemput untuk jadwal tertentu."
                 action={
-                    <button
-                        onClick={() => openForm('requestPickup')}
-                        className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
-                    >
-                        <CalendarClock size={16} />
-                        <span>Minta Jemput</span>
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => openForm('waste')}
+                            className="flex h-10 items-center gap-2 rounded-xl border border-primary px-4 text-xs font-semibold text-primary transition-all hover:bg-primary hover:text-white"
+                        >
+                            <CirclePlus size={16} />
+                            <span>Setor Sampah</span>
+                        </button>
+                        <button
+                            onClick={() => openForm('requestPickup')}
+                            className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
+                        >
+                            <CalendarClock size={16} />
+                            <span>Minta Jemput</span>
+                        </button>
+                    </div>
                 }
             />
             <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
@@ -479,7 +490,7 @@ function MemberPages({ page, setPage, openForm }) {
         case 'dashboard':
             return <DashboardPage />;
         case 'simpanan-wajib':
-            return <WajibPage openForm={openForm} />;
+            return <WajibPage />;
         case 'simpanan-sukarela':
             return <SukarelaPage />;
         case 'pengambilan-sampah':

@@ -1,4 +1,4 @@
-// Manajemen user internal (ketua/pengurus/petugas) oleh pengurus — GET/POST/PUT/DELETE /users.
+// Manajemen user (pengurus/petugas/anggota) oleh pengurus — GET/POST/PUT/DELETE /users.
 import { useState } from 'react';
 import { Eye, Pencil, Search, ShieldCheck, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { PageHeader, StatCard, Pager } from '@/Components/Koperasi/ManagerUI';
@@ -8,11 +8,12 @@ import { api, useApi, rp, dfmt } from '@/lib/api';
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
 const ROLE_STYLE = {
-    ketua: 'bg-purple-100 text-purple-800',
     pengurus: 'bg-blue-100 text-primary',
     petugas: 'bg-emerald-100 text-emerald-700',
     anggota: 'bg-slate-100 text-slate-600',
 };
+
+const ROLE_LABEL = { pengurus: 'Pengurus', petugas: 'Petugas', anggota: 'Warga' };
 
 const inputCls = 'h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15';
 
@@ -80,8 +81,7 @@ function UserForm({ user, onDone, onCancel }) {
                         <select required value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className={inputCls}>
                             <option value="petugas">Petugas</option>
                             <option value="pengurus">Pengurus</option>
-                            <option value="ketua">Ketua</option>
-                            <option value="anggota">Anggota</option>
+                            <option value="anggota">Warga (Anggota)</option>
                         </select>
                     </label>
                     {form.role === 'anggota' && (
@@ -158,7 +158,7 @@ export default function UsersPage({ showStatus }) {
         <div className="flex flex-col gap-6">
             <PageHeader
                 title="Manajemen Pengguna"
-                desc="Kelola akun internal koperasi: ketua, pengurus, dan petugas lapangan."
+                desc="Kelola akun koperasi: pengurus, petugas lapangan, dan warga (anggota)."
                 action={
                     <button onClick={() => setEditing({})}
                         className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90">
@@ -168,9 +168,9 @@ export default function UsersPage({ showStatus }) {
             />
 
             <div className="grid gap-5 md:grid-cols-3">
-                <StatCard icon={ShieldCheck} label="Ketua" value={`${counts('ketua')} akun`} tone="gold" />
                 <StatCard icon={Users} label="Pengurus" value={`${counts('pengurus')} akun`} tone="blue" />
                 <StatCard icon={Users} label="Petugas" value={`${counts('petugas')} akun`} tone="green" />
+                <StatCard icon={ShieldCheck} label="Warga (Anggota)" value={`${counts('anggota')} akun`} tone="gold" />
             </div>
 
             <section className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
@@ -185,10 +185,9 @@ export default function UsersPage({ showStatus }) {
                         <select value={role} onChange={e => setRole(e.target.value)} aria-label="Filter role"
                             className="h-9 rounded-xl border border-border bg-card px-3 text-xs font-medium text-foreground focus:bg-white">
                             <option value="semua">Semua Role</option>
-                            <option value="ketua">Ketua</option>
                             <option value="pengurus">Pengurus</option>
                             <option value="petugas">Petugas</option>
-                            <option value="anggota">Anggota</option>
+                            <option value="anggota">Warga</option>
                         </select>
                     </div>
                 </div>
@@ -214,7 +213,7 @@ export default function UsersPage({ showStatus }) {
                                     </td>
                                     <td className="px-6 py-4 text-muted-foreground">{u.email}</td>
                                     <td className="px-6 py-4">
-                                        <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-bold uppercase', ROLE_STYLE[u.role])}>{u.role}</span>
+                                        <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-bold uppercase', ROLE_STYLE[u.role])}>{ROLE_LABEL[u.role] ?? u.role}</span>
                                     </td>
                                     <td className="px-6 py-4 text-muted-foreground">{dfmt(u.created_at)}</td>
                                     <td className="px-6 py-4 text-right">
@@ -269,7 +268,7 @@ export default function UsersPage({ showStatus }) {
                     <div className="grid gap-3 p-6 sm:grid-cols-2 bg-card">
                         {[
                             ['Nama', detail.name], ['Username', `@${detail.username}`], ['Email', detail.email],
-                            ['Role', detail.role?.toUpperCase()], ['Telepon', detail.phone ?? '-'], ['Alamat', detail.address ?? '-'],
+                            ['Role', ROLE_LABEL[detail.role] ?? detail.role?.toUpperCase()], ['Telepon', detail.phone ?? '-'], ['Alamat', detail.address ?? '-'],
                         ].map(([label, value]) => (
                             <div key={label} className="rounded-xl border border-border/60 bg-slate-50/70 p-3.5">
                                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>

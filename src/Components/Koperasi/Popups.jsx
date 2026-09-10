@@ -414,9 +414,10 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                             const cats = user?.member?.categories?.length
                                 ? user.member.categories
                                 : [user?.member?.category?.name ?? 'rumah'];
-                            const locations = cats.filter(c => c === 'rumah' || c === 'pasar');
-                            // Satu kategori → lokasi tetap; dua kategori → anggota pilih rumah/pasar.
-                            if (locations.length < 2) return null;
+                            const locations = cats.filter(c => c === 'rumah' || c === 'pasar')
+                                .map(c => (c === 'rumah' ? 'jemput_rumah' : 'jemput_pasar'));
+                            // Satu kategori → dropdown read-only (lokasi tetap); dua → anggota pilih.
+                            const fixed = locations.length <= 1 ? (locations[0] ?? 'jemput_rumah') : null;
                             return (
                                 <div className="flex flex-col gap-1.5">
                                     <label htmlFor="location_type" className="text-xs font-semibold text-foreground/80">Lokasi Penjemputan</label>
@@ -424,11 +425,18 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                                         required
                                         id="location_type"
                                         name="location_type"
-                                        className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+                                        disabled={Boolean(fixed)}
+                                        value={fixed ?? undefined}
+                                        className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-foreground transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-70"
                                     >
-                                        <option value="jemput_rumah">Jemput ke Rumah</option>
-                                        <option value="jemput_pasar">Jemput ke Pasar</option>
+                                        {fixed
+                                            ? <option value={fixed}>{fixed === 'jemput_rumah' ? 'Jemput ke Rumah' : 'Jemput ke Pasar'}</option>
+                                            : <>
+                                                <option value="jemput_rumah">Jemput ke Rumah</option>
+                                                <option value="jemput_pasar">Jemput ke Pasar</option>
+                                            </>}
                                     </select>
+                                    {fixed && <span className="text-[11px] text-muted-foreground">Sesuai kategori Anda — hanya tersedia lokasi ini.</span>}
                                 </div>
                             );
                         })()}
