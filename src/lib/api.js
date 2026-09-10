@@ -31,7 +31,11 @@ export async function api(path, { method = 'GET', body, headers } = {}) {
         err.message = payload.message || err.message;
         err.errors = payload.errors ?? {};
     }
-    if (res.status === 401) clearToken(); // token invalid/expired → paksa login ulang
+    if (res.status === 401) {
+        // Token invalid/expired → paksa login ulang (hard redirect: bersihkan state React).
+        clearToken();
+        if (!window.location.pathname.startsWith('/login')) window.location.href = '/login';
+    }
     throw err;
 }
 
