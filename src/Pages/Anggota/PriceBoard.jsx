@@ -79,21 +79,15 @@ export default function PriceBoardPage() {
                                     {trend}
                                 </span>
                             </div>
-                            {/* Harga bersih utama (yang diterima anggota) + 2 nominal pendamping */}
-                            <div className="mt-4 flex flex-col gap-3">
+                            {/* Hanya 2 nominal untuk anggota: bersih (diterima) & kotor */}
+                            <div className="mt-4 grid grid-cols-2 gap-3">
                                 <div className="rounded-xl border border-primary/40 bg-[#eaf1fd] p-3 text-center">
                                     <p className="text-[10px] font-bold uppercase text-primary">Harga Bersih</p>
-                                    <strong className="mt-0.5 block text-base font-extrabold break-words text-primary">{rp(item.price_member)}</strong>
+                                    <strong className="mt-0.5 block text-sm font-extrabold break-words text-primary md:text-base">{rp(item.price_member)}</strong>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3 text-center">
-                                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Harga Kotor</p>
-                                        <strong className="mt-0.5 block text-sm font-extrabold break-words text-foreground">{rp(item.price_unsorted)}</strong>
-                                    </div>
-                                    <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3 text-center">
-                                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Harga Jual</p>
-                                        <strong className="mt-0.5 block text-sm font-extrabold break-words text-foreground">{rp(item.price_sell)}</strong>
-                                    </div>
+                                <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3 text-center">
+                                    <p className="text-[10px] font-bold uppercase text-muted-foreground">Harga Kotor</p>
+                                    <strong className="mt-0.5 block text-sm font-extrabold break-words text-foreground md:text-base">{rp(item.price_unsorted)}</strong>
                                 </div>
                             </div>
                         </article>
