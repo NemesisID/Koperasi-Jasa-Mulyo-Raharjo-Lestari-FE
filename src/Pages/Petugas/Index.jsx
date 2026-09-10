@@ -105,7 +105,12 @@ function DashboardPage() {
 function PickupPage() {
     // Default "semua": baris atas = prioritas belum diambil, selesai turun ke bawah.
     const [status, setStatus] = useState('semua');
-    const { data, loading, error, reload } = useApi(`/pickups?status=${status}&per_page=25`);
+    const [mineOnly, setMineOnly] = useState(false);
+    const { user } = useAuth();
+    // 'semua' bukan status di BE — jangan kirim param status (dulu bikin list selalu kosong).
+    const statusQ = status === 'semua' ? '' : `status=${status}&`;
+    const mineQ = mineOnly && user?.id ? `officer_id=${user.id}&` : '';
+    const { data, loading, error, reload } = useApi(`/pickups?${statusQ}${mineQ}per_page=25`);
     // Prioritas: yang BELUM diambil selalu di atas; tiket selesai (sudah
     // ditimbang) otomatis turun ke bawah. Batal paling bawah.
     const priority = { menunggu: 0, proses: 1, selesai: 2, batal: 3 };
@@ -144,6 +149,10 @@ function PickupPage() {
                         </select>
                     </div>
                 </div>
+                <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-xs font-semibold text-foreground shadow-xs">
+                    <input type="checkbox" checked={mineOnly} onChange={e => setMineOnly(e.target.checked)} className="accent-primary" />
+                    Hanya tugas saya
+                </label>
             </div>
 
             <div className="flex flex-col gap-4">
@@ -190,6 +199,11 @@ function PickupPage() {
                                     {p.location_type && (
                                         <span className="rounded-full bg-slate-100 px-3 py-0.5 text-xs font-semibold text-muted-foreground">
                                             {p.location_type === 'jemput_rumah' ? 'Jemput Rumah' : p.location_type === 'jemput_pasar' ? 'Jemput Pasar' : 'Gudang'}
+                                        </span>
+                                    )}
+                                    {p.officer?.name && (
+                                        <span className="rounded-full bg-indigo-100 px-3 py-0.5 text-xs font-semibold text-indigo-700">
+                                            Petugas: {p.officer.name}
                                         </span>
                                     )}
                                 </div>
