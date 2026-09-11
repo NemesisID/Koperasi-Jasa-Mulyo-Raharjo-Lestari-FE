@@ -342,10 +342,121 @@ function ReportPage({ showStatus }) {
     );
 }
 
+// ─── 4. Riwayat Aktivitas Sub-page ────────────────────────────
+// Semua penjemputan/penimbangan yang DITANGANI petugas ini (officer_id = saya).
+function HistoryPage() {
+    const { user } = useAuth();
+    const { data, loading, error } = useApi(`/pickups?officer_id=${user?.id}&status=selesai&per_page=100`);
+    const rows = data ?? [];
+    const totalKg = rows.reduce((s, p) => s + Number(p.total_gross ?? 0), 0);
+    const totalNet = rows.reduce((s, p) => s + Number(p.total_net ?? 0), 0);
+
+    // Rekap per bulan (key "September 2026") — baris terbaru dulu.
+    const perMonth = [];
+    rows.forEach(p => {
+        const d = p.completed_at ?? p.scheduled_at;
+        const key = d ? new Date(d).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) : 'Tanpa Tanggal';
+        let m = perMonth.find(x => x.key === key);
+        if (!m) perMonth.push(m = { key, kg: 0, count: 0, net: 0 });
+        m.kg += Number(p.total_gross ?? 0);
+        m.net += Number(p.total_net ?? 0);
+        m.count += 1;
+    });
+
+    return (
+        <div className="mx-auto max-w-5xl flex flex-col gap-6">
+            <section className="flex flex-col justify-between gap-4 rounded-2xl border border-border/80 bg-card p-6 shadow-xs sm:flex-row sm:items-center">
+                <div>
+                    <h1 className="text-2xl font-bold text-foreground md:text-3xl">Riwayat Aktivitas</h1>
+                    <p className="mt-1 text-sm text-muted-foreground">Penjemputan & penimbangan yang Anda tangani (100 terakhir).</p>
+                </div>
+            </section>
+
+            <div className="grid gap-5 md:grid-cols-3">
+                <Stat featured label="Tiket Ditangani" value={`${rows.length} tiket`}>
+                    <p className="text-xs text-blue-100">Semua sudah selesai ditimbang</p>
+                </Stat>
+                <Stat label="Total Berat" value={`${totalKg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg`}>
+                    <p className="text-xs font-semibold text-muted-foreground">Akumulasi seluruh penjemputan</p>
+                </Stat>
+                <Stat label="Bersih untuk Anggota" value={rp(totalNet)}>
+                    <p className="text-xs font-semibold text-muted-foreground">Total dikreditkan ke wallet anggota</p>
+                </Stat>
+            </div>
+
+            {/* Rekap per bulan */}
+            {perMonth.length > 0 && (
+                <section className="rounded-2xl border border-border/80 bg-card p-5 shadow-xs">
+                    <h2 className="text-lg font-bold text-foreground">Rekap per Bulan</h2>
+                    <div className="mt-4 flex flex-col divide-y divide-border/60">
+                        {perMonth.map(m => (
+                            <div key={m.key} className="flex flex-wrap items-center justify-between gap-2 py-3">
+                                <span className="text-sm font-semibold text-foreground">{m.key}</span>
+                                <div className="flex items-center gap-4 text-xs">
+                                    <span className="rounded-full bg-secondary px-3 py-1 font-semibold text-muted-foreground">{m.count} tiket</span>
+                                    <strong className="text-foreground">{m.kg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg</strong>
+                                    <strong className="text-primary">{rp(m.net)}</strong>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            <section className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
+                <div className="p-5 border-b border-border/60">
+                    <h2 className="text-lg font-bold text-foreground">Rincian Aktivitas</h2>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full min-w-[640px] text-left text-sm">
+                        <thead className="bg-[#eef3fc] text-xs font-bold uppercase tracking-wider text-slate-700">
+                            <tr>
+                                <th className="px-6 py-3.5">Tanggal</th>
+                                <th className="px-6 py-3.5">Anggota</th>
+                                <th className="px-6 py-3.5">Lokasi</th>
+                                <th className="px-6 py-3.5">Berat (kg)</th>
+                                <th className="px-6 py-3.5">Bersih Anggota</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/60">
+                            {loading && (
+                                <tr><td colSpan={5} className="px-6 py-8 text-center text-sm text-muted-foreground">Memuat riwayat…</td></tr>
+                            )}
+                            {!loading && rows.length === 0 && (
+                                <tr><td colSpan={5} className="px-6 py-8 text-center text-sm text-muted-foreground">{error ? 'Gagal memuat riwayat.' : 'Belum ada aktivitas yang Anda tangani.'}</td></tr>
+                            )}
+                            {rows.map(p => (
+                                <tr key={p.id} className="hover:bg-secondary/40 transition-colors">
+                                    <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">{dfmt(p.completed_at ?? p.scheduled_at)}</td>
+                                    <td className="px-6 py-4">
+                                        <span className="block font-semibold text-foreground">{p.member?.name ?? '-'}</span>
+                                        <span className="font-mono text-[11px] text-muted-foreground">#{p.id} · {p.member?.member_code ?? '-'}</span>
+                                    </td>
+                                    <td className="px-6 py-4 text-muted-foreground">
+                                        {p.location_type === 'jemput_rumah' ? 'Jemput Rumah' : p.location_type === 'jemput_pasar' ? 'Jemput Pasar' : 'Gudang'}
+                                    </td>
+                                    <td className="px-6 py-4 font-semibold text-foreground">{Number(p.total_gross ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 1 })}</td>
+                                    <td className="px-6 py-4 font-bold text-primary">{rp(p.total_net)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="flex items-center justify-between border-t-2 border-primary bg-[#eef3fc] px-6 py-4">
+                    <strong className="text-sm font-bold text-foreground">Total Keseluruhan</strong>
+                    <strong className="text-xl font-extrabold text-primary">{totalKg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg</strong>
+                </div>
+            </section>
+        </div>
+    );
+}
+
 // ─── Router Component ─────────────────────────────────────────
 function OfficerPages({ page, showStatus }) {
     if (page === 'jemput-sampah') return <PickupPage />;
     if (page === 'laporan') return <ReportPage showStatus={showStatus} />;
+    if (page === 'riwayat') return <HistoryPage />;
     return <DashboardPage />;
 }
 
@@ -353,6 +464,7 @@ const officerPageTitles = {
     'dashboard': 'Dashboard Petugas',
     'jemput-sampah': 'Jemput Sampah',
     'laporan': 'Laporan Penjemputan',
+    'riwayat': 'Riwayat Aktivitas',
 };
 
 export default function PetugasIndex() {

@@ -4,10 +4,10 @@ import { Head } from '@/lib/shims';
 import { useAuth } from '@/lib/auth';
 import {
     CheckCircle2, ChevronLeft, ChevronRight, Clock,
-    FileSpreadsheet, FileText, Plus, Search, X
+    FileSpreadsheet, FileText, Info, Plus, Search, Send, X
 } from 'lucide-react';
 import { ManagerShell } from '@/Components/Koperasi/ManagerShell';
-import { FormPopup, StatusPopup } from '@/Components/Koperasi/Popups';
+import { FormPopup, Modal, StatusPopup } from '@/Components/Koperasi/Popups';
 import { api, useApi, download, rp, dfmt } from '@/lib/api';
 import ComplaintsDeskPage from './ComplaintsDesk';
 import TrashPricesPage from './TrashPrices';
@@ -354,10 +354,24 @@ function SavingsByLabelPage({ label }) {
 }
 
 // ─── 4. SHU Page ──────────────────────────────────────────────
+// Alur dual-safety: klik "Distribusi Baru" bila draft tahun berjalan sudah ada
+// → alert; row draft punya tombol info (rincian + form edit total) dan Bagikan.
 function ShuPage() {
-    const { openForm } = usePopup();
-    const { data, loading } = useApi('/shu/periods');
+    const { openForm, showStatus } = usePopup();
+    const { data, loading, reload } = useApi('/shu/periods');
+    const [detail, setDetail] = useState(null); // row draft yang dilihat/diedit
     const rows = data ?? [];
+    const currentYear = new Date().getFullYear();
+    const existingDraft = rows.find(r => r.year === currentYear);
+
+    const startNew = () => {
+        if (existingDraft) {
+            showStatus('Pembagian SHU Tahun Berjalan Sudah Ada',
+                `Draft SHU ${currentYear} sudah dibuat — gunakan tombol aksi pada baris draft untuk mengubah atau membagikan.`);
+            return;
+        }
+        openForm('distribution');
+    };
 
     return (
         <div className="flex flex-col gap-6">
@@ -366,7 +380,7 @@ function ShuPage() {
                 desc="Kelola pembagian SHU anggota secara transparan."
                 action={
                     <button
-                        onClick={() => openForm('distribution')}
+                        onClick={startNew}
                         className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
                     >
                         <Plus size={16} />
@@ -380,7 +394,7 @@ function ShuPage() {
                     <h2 className="text-lg font-bold text-foreground">Daftar Pembagian SHU Anggota</h2>
                 </div>
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[700px] text-left text-sm">
+                    <table className="w-full min-w-[760px] text-left text-sm">
                         <thead className="bg-[#eef3fc] text-xs font-bold uppercase tracking-wider text-slate-700">
                             <tr>
                                 <th className="px-6 py-3.5">Tahun</th>
@@ -389,11 +403,12 @@ function ShuPage() {
                                 <th className="px-6 py-3.5">Dibagikan</th>
                                 <th className="px-6 py-3.5">Penerima</th>
                                 <th className="px-6 py-3.5">Status</th>
+                                <th className="px-6 py-3.5 text-right">Aksi</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
-                            {loading && <tr><td colSpan={6} className="px-6 py-8 text-center text-sm text-muted-foreground">Memuat data…</td></tr>}
-                            {!loading && rows.length === 0 && <tr><td colSpan={6}><EmptyState label="Belum ada distribusi SHU" /></td></tr>}
+                            {loading && <tr><td colSpan={7} className="px-6 py-8 text-center text-sm text-muted-foreground">Memuat data…</td></tr>}
+                            {!loading && rows.length === 0 && <tr><td colSpan={7}><EmptyState label="Belum ada distribusi SHU" /></td></tr>}
                             {rows.map(r => (
                                 <tr key={r.id} className="hover:bg-secondary/40 transition-colors">
                                     <td className="px-6 py-4 font-bold text-foreground">{r.year}</td>
@@ -404,10 +419,28 @@ function ShuPage() {
                                     <td className="px-6 py-4">
                                         <span className={cn(
                                             'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                                            r.status === 'published' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
+                                            r.status === 'dibagikan' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
                                         )}>
-                                            {r.status}
+                                            {r.status === 'dibagikan' ? 'dibagikan' : (r.status ?? 'draft')}
                                         </span>
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        {r.status !== 'dibagikan' && (
+                                            <div className="flex justify-end gap-1.5">
+                                                <button
+                                                    onClick={() => setDetail(r)}
+                                                    className="flex h-9 items-center gap-1.5 rounded-xl border border-primary px-3.5 text-xs font-semibold text-primary hover:bg-primary hover:text-white"
+                                                >
+                                                    <Info size={14} /> Info / Edit
+                                                </button>
+                                                <button
+                                                    onClick={() => publishDraft(r)}
+                                                    className="flex h-9 items-center gap-1.5 rounded-xl bg-emerald-700 px-3.5 text-xs font-semibold text-white hover:bg-emerald-800"
+                                                >
+                                                    <Send size={14} /> Bagikan
+                                                </button>
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
@@ -415,7 +448,96 @@ function ShuPage() {
                     </table>
                 </div>
             </section>
+
+            {detail && <ShuDraftModal distribution={detail} onClose={() => { setDetail(null); reload(); }} />}
         </div>
+    );
+
+    async function publishDraft(r) {
+        try {
+            const res = await api('/shu/publish', { method: 'POST', body: { shu_distribution_id: r.id } });
+            showStatus('SHU Berhasil Dibagikan', res?.message || `SHU tahun ${r.year} terbagi rata ke seluruh anggota.`);
+            reload();
+        } catch (err) {
+            showStatus('Gagal Membagikan SHU', err.message || 'Gagal membagikan SHU.');
+        }
+    }
+}
+
+// Info draft + form edit total SHU (recalc otomatis per anggota via BE).
+function ShuDraftModal({ distribution, onClose }) {
+    const { showStatus } = usePopup();
+    const [error, setError] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [total, setTotal] = useState(String(Math.round(Number(distribution.total_shu ?? 0))));
+
+    const submit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSaving(true);
+        try {
+            // Draft menyimpan total_shu = 20% pool; BE menerima net_profit (laba bersih)
+            // → kirim kembali net_profit yang menghasilkan pool ini.
+            const netProfit = Number(total.replace(/[^\d]/g, '')) * 5;
+            const res = await api(`/shu/drafts/${distribution.id}`, { method: 'PATCH', body: { net_profit: netProfit } });
+            showStatus('Draft SHU Diperbarui', res?.message || `Draft SHU ${distribution.year} berhasil diperbarui.`);
+            onClose();
+        } catch (err) {
+            setError(err.message || 'Gagal memperbarui draft SHU.');
+        } finally { setSaving(false); }
+    };
+
+    return (
+        <Modal open onClose={onClose} size="md">
+            <div className="flex items-center justify-between px-6 py-4 bg-accent/60 border-b border-border/60">
+                <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
+                    <Info size={20} />
+                    <span>Draft SHU — Tahun {distribution.year}</span>
+                </h2>
+                <button type="button" onClick={onClose} aria-label="Tutup"
+                    className="rounded-lg p-1 text-muted-foreground hover:bg-black/5 hover:text-foreground transition-colors">
+                    <X size={18} />
+                </button>
+            </div>
+            <form onSubmit={submit} className="flex flex-col gap-4 p-6 bg-card">
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl bg-[#eef3fc] px-4 py-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Penerima</p>
+                        <p className="mt-0.5 text-sm font-bold text-primary">{distribution.recipient_count ?? 0} anggota</p>
+                    </div>
+                    <div className="rounded-xl bg-[#eef3fc] px-4 py-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Dibagikan</p>
+                        <p className="mt-0.5 text-sm font-bold text-primary">{rp(distribution.distributed_amount)}</p>
+                    </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                    <label htmlFor="shu-total" className="text-xs font-semibold text-foreground/80">Total SHU Dibagikan</label>
+                    <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-primary">Rp</span>
+                        <input
+                            required
+                            id="shu-total"
+                            inputMode="numeric"
+                            value={total ? Number(total.replace(/\D/g, '')).toLocaleString('id-ID') : ''}
+                            onChange={e => setTotal(e.target.value)}
+                            placeholder="0"
+                            className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-11 pr-3.5 text-sm text-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+                        />
+                    </div>
+                </div>
+                {error && <p className="text-xs font-medium text-destructive">{error}</p>}
+                <div className="flex gap-3 pt-2">
+                    <button type="button" onClick={onClose}
+                        className="h-11 flex-1 rounded-xl border border-border bg-card text-sm font-semibold text-foreground/80 hover:bg-secondary transition-all">
+                        Batal
+                    </button>
+                    <button type="submit" disabled={saving}
+                        className="h-11 flex-[1.5] rounded-xl bg-primary text-sm font-semibold text-white shadow-sm hover:bg-primary/90 disabled:opacity-60">
+                        {saving ? 'Menyimpan…' : 'Simpan Draft'}
+                    </button>
+                </div>
+            </form>
+        </Modal>
     );
 }
 
@@ -918,7 +1040,8 @@ export default function PengurusIndex() {
             <ManagerShell currentPage={page} setPage={setPage}>
                 <ManagerPages page={page} setPage={setPage} />
             </ManagerShell>
-            <FormPopup kind={form} onClose={() => setForm(null)} onSuccess={msg => setStatus(msg)} />
+            {/* key={form}: remount tiap form dibuka → state & input uncontrolled selalu reset (issue #4). */}
+            <FormPopup key={form || 'none'} kind={form} onClose={() => setForm(null)} onSuccess={msg => setStatus(msg)} />
             <StatusPopup open={Boolean(status)} title={status} onClose={() => setStatus('')} />
         </PopupCtx.Provider>
     );

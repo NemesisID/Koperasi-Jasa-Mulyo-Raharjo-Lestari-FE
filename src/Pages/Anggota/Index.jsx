@@ -715,7 +715,8 @@ export default function AnggotaIndex() {
             <MemberShell currentPage={page} setPage={setPage}>
                 <MemberPages page={page} setPage={setPage} openForm={setForm} />
             </MemberShell>
-            <FormPopup kind={form} onClose={() => setForm(null)} onSuccess={msg => setStatus(msg)} />
+            {/* key={form}: remount tiap form dibuka → state & input uncontrolled selalu reset (issue #4). */}
+            <FormPopup key={form || 'none'} kind={form} onClose={() => setForm(null)} onSuccess={msg => setStatus(msg)} />
             <StatusPopup open={Boolean(status)} title={status} onClose={() => setStatus('')} />
         </>
     );

@@ -52,8 +52,9 @@ export function ManagerShell({ children, currentPage, setPage }) {
                 </div>
             </div>
 
-            {/* Navigation */}
-            <nav className="custom-scrollbar flex flex-1 flex-col gap-1 px-3 py-4 overflow-y-auto" aria-label="Navigasi utama">
+            {/* Navigation — sidebar scroll utuh (bukan scroll terpisah per nav),
+                item seragam h-11 seperti sidebar petugas & anggota. */}
+            <nav className="flex flex-col gap-1 px-3 py-4" aria-label="Navigasi utama">
                 {/* Dashboard */}
                 <button onClick={() => nav('dashboard')} className={navBtnCls(is('dashboard'))}>
                     <LayoutGrid size={18} />
@@ -149,7 +150,7 @@ export function ManagerShell({ children, currentPage, setPage }) {
             </nav>
 
             {/* Footer */}
-            <div className="flex flex-col gap-1 border-t border-border/60 p-3 mt-auto bg-[#f3f6fc]">
+            <div className="flex flex-col gap-1 border-t border-border/60 p-3 bg-[#f3f6fc]">
                 <button className={navBtnCls(false)}>
                     <CircleHelp size={18} />
                     <span>Bantuan</span>
