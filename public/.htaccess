@@ -1,0 +1,8 @@
+# SPA fallback: rute React dikerjakan index.html, TAPI folder /be tetap diteruskan ke backend
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_URI} !^/be(/|$)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [L]
+</IfModule>
