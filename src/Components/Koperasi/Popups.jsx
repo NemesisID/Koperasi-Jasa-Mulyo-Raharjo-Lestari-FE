@@ -52,7 +52,14 @@ function Field({ name, label, placeholder, type = 'text', defaultValue, required
     );
 }
 
+// #6: input uang berformat titik-ribuan saat mengetik (id-ID) — nilai yang
+// dikirim tetap angka murni (form sudah strip non-digit sebelum submit).
 function MoneyField({ name, label, defaultValue, required = true }) {
+    const fmt = (v) => {
+        if (v === undefined || v === null || v === '') return '';
+        return Number(String(v).replace(/[^\d]/g, '') || 0).toLocaleString('id-ID');
+    };
+    const [display, setDisplay] = useState(() => fmt(defaultValue));
     return (
         <div className="flex flex-col gap-1.5">
             <label htmlFor={name} className="text-xs font-semibold text-foreground/80">{label}</label>
@@ -64,7 +71,8 @@ function MoneyField({ name, label, defaultValue, required = true }) {
                     name={name}
                     type="text"
                     inputMode="numeric"
-                    defaultValue={defaultValue}
+                    value={display}
+                    onChange={e => setDisplay(fmt(e.target.value))}
                     placeholder="0"
                     className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-11 pr-3.5 text-sm text-foreground transition-all placeholder:text-muted-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
                 />
@@ -119,6 +127,36 @@ function TextAreaField({ name, label, placeholder, rows = 3, required = true }) 
                 rows={rows}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-sm text-foreground transition-all placeholder:text-muted-foreground focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15 resize-none"
             />
+        </div>
+    );
+}
+
+// #17: input foto opsional (bukti nota/nota fisik) untuk transaksi keuangan.
+function PhotoField({ name, label }) {
+    const [file, setFile] = useState(null);
+    return (
+        <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-foreground/80">{label} (opsional)</label>
+            <div className="flex items-center gap-3">
+                <label className="flex h-9 cursor-pointer items-center gap-2 rounded-xl border border-border bg-slate-50/50 px-3.5 text-xs font-semibold text-foreground/80 transition-all hover:border-primary hover:text-primary">
+                    {file ? 'Ganti Foto' : 'Pilih Foto'}
+                    <input
+                        type="file"
+                        accept="image/*"
+                        name={name}
+                        onChange={e => setFile(e.target.files?.[0] ?? null)}
+                        className="hidden"
+                    />
+                </label>
+                {file && (
+                    <>
+                        <img src={URL.createObjectURL(file)} alt="Preview" className="h-12 w-16 rounded-lg border border-border/60 object-cover" />
+                        <button type="button" onClick={() => setFile(null)} className="text-xs font-semibold text-destructive hover:underline">
+                            Hapus
+                        </button>
+                    </>
+                )}
+            </div>
         </div>
     );
 }
@@ -185,6 +223,8 @@ export function FormPopup({ kind, onClose, onSuccess }) {
     const [shuAuto, setShuAuto] = useState(null);
     // Kategori member terpilih (rumah/pasar) — menentukan simpanan pokok otomatis.
     const [memberTypes, setMemberTypes] = useState([]);
+    // #19: draft SHU yang menunggu konfirmasi publish.
+    const [pendingShu, setPendingShu] = useState(null);
     const { user } = useAuth();
     if (!kind || !configs[kind]) return null;
     const { title, icon: Icon, tone, submit, submitCls, bg } = configs[kind];
@@ -219,28 +259,18 @@ export function FormPopup({ kind, onClose, onSuccess }) {
         setSaving(true);
         try {
             let res;
-            if (kind === 'income') {
-                res = await api('/transactions', {
-                    method: 'POST',
-                    body: {
-                        category_id: Number(fd.get('category_id')) || null,
-                        type: 'income',
-                        amount: Number(String(fd.get('amount')).replace(/[^\d]/g, '')),
-                        description: fd.get('note') || null,
-                        payment_method: 'tunai',
-                    },
-                });
-            } else if (kind === 'expense') {
-                res = await api('/transactions', {
-                    method: 'POST',
-                    body: {
-                        category_id: Number(fd.get('category_id')) || null,
-                        type: 'expense',
-                        amount: Number(String(fd.get('amount')).replace(/[^\d]/g, '')),
-                        description: fd.get('description') || null,
-                        payment_method: 'tunai',
-                    },
-                });
+            if (kind === 'income' || kind === 'expense') {
+                // #17: foto bukti opsional → FormData agar file ikut terkirim;
+                // tanpa foto tetap multipart (BE menerima keduanya, photo nullable).
+                const fd2 = new FormData();
+                fd2.append('category_id', fd.get('category_id') ?? '');
+                fd2.append('type', kind);
+                fd2.append('amount', Number(String(fd.get('amount')).replace(/[^\d]/g, '')) || 0);
+                fd2.append('payment_method', 'tunai');
+                fd2.append('description', (fd.get(kind === 'income' ? 'note' : 'description') || ''));
+                const photo = fd.get('photo');
+                if (photo && typeof photo === 'object' && photo.size > 0) fd2.append('photo', photo);
+                res = await api('/transactions', { method: 'POST', body: fd2 });
             } else if (kind === 'waste') {
                 // Anggota setor untuk dirinya sendiri; petugas/pengurus pilih member manual.
                 const memberId = user?.role === 'anggota' ? user?.member?.id : Number(fd.get('member'));
@@ -290,20 +320,21 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                     },
                 });
             } else if (kind === 'distribution') {
-                // Simpan draft lalu publish — saldo anggota langsung dikredit (alur.md).
-                res = await api('/shu/simulate?save=1', {
+                // #19: publish SHU mengkredit saldo SELURUH anggota — draft dulu, lalu
+                // wajib lewat konfirmasi eksplisit sebelum dipublikasikan.
+                const draft = await api('/shu/simulate?save=1', {
                     method: 'POST',
                     body: {
                         year: Number(fd.get('year')),
                         net_profit: Number(String(fd.get('totalShu')).replace(/[^\d]/g, '')),
                     },
                 });
-                if (res?.data?.shu_distribution_id) {
-                    res = await api('/shu/publish', {
-                        method: 'POST',
-                        body: { shu_distribution_id: res.data.shu_distribution_id },
-                    });
+                if (draft?.data?.shu_distribution_id) {
+                setPendingShu(draft.data.shu_distribution_id);
+                setSaving(false);
+                return; // tunggu ConfirmPopup — publish terjadi di confirmShuPublish()
                 }
+                res = draft;
             }
             onClose();
             onSuccess(res?.message || 'Data Berhasil Disimpan');
@@ -311,6 +342,26 @@ export function FormPopup({ kind, onClose, onSuccess }) {
             const fieldErrs = err.errors && Object.values(err.errors)[0]?.[0];
             setError(fieldErrs || err.message || 'Gagal menyimpan data.');
         } finally {
+            setSaving(false);
+        }
+    };
+
+    // #19: konfirmasi akhir publish SHU — saldo seluruh anggota terkredit saat ini.
+    const confirmShuPublish = async () => {
+        if (!pendingShu) return;
+        setSaving(true);
+        setError('');
+        try {
+            const res = await api('/shu/publish', {
+                method: 'POST',
+                body: { shu_distribution_id: pendingShu },
+            });
+            setPendingShu(null);
+            onClose();
+            onSuccess(res?.message || 'SHU Berhasil Dibagikan');
+        } catch (err) {
+            setPendingShu(null);
+            setError(err.message || 'Gagal mempublikasikan SHU.');
             setSaving(false);
         }
     };
@@ -337,7 +388,8 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                     <>
                         <FinCategorySelect cats={finCats} label="Kategori Pemasukan" />
                         <MoneyField name="amount" label="Jumlah Nominal" />
-                        <TextAreaField name="note" label="Keterangan" placeholder="Catatan tambahan..." />
+                        <TextAreaField name="note" label="Keterangan" placeholder="Catatan tambahan..." required={false} />
+                        <PhotoField name="photo" label="Foto Bukti" />
                     </>
                 )}
 
@@ -345,7 +397,8 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                     <>
                         <FinCategorySelect cats={finCats} label="Kategori Pengeluaran" />
                         <MoneyField name="amount" label="Jumlah Nominal" />
-                        <TextAreaField name="description" label="Keterangan Pengeluaran" placeholder="Tujuan / rincian pengeluaran..." />
+                        <TextAreaField name="description" label="Keterangan Pengeluaran" placeholder="Tujuan / rincian pengeluaran..." required={false} />
+                        <PhotoField name="photo" label="Foto Bukti" />
                     </>
                 )}
 
@@ -505,6 +558,17 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                     </button>
                 </div>
             </form>
+
+            {/* #19: dialog konfirmasi publish SHU */}
+            <ConfirmPopup
+                open={Boolean(pendingShu)}
+                title="Bagikan SHU Sekarang?"
+                description="Draft SHU siap dipublikasikan. Saldo SELURUH anggota aktif akan terkredit otomatis dan tindakan ini tidak dapat dibatalkan."
+                actionLabel="Ya, Bagikan Sekarang"
+                tone="destructive"
+                onCancel={() => { setPendingShu(null); onClose(); }}
+                onConfirm={confirmShuPublish}
+            />
         </Modal>
     );
 }

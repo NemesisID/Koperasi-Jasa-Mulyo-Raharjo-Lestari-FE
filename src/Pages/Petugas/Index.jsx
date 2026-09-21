@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import { useAuth } from '@/lib/auth';
@@ -48,8 +48,12 @@ const STATUS_STYLE = {
 function DashboardPage() {
     const { data, loading, error } = useApi('/pickups?per_page=10');
     const rows = data ?? [];
-    const done = rows.filter(p => p.status === 'selesai').length;
     const gross = rows.reduce((s, p) => s + Number(p.total_gross ?? 0), 0);
+    // #16: hitungan status dari endpoint agregat yang sama dengan halaman pengurus —
+    // bukan dari potongan 10 tiket terakhir (sumber tidak-sinkron yang lama).
+    const { data: stats } = useApi('/pickups/stats');
+    const done = stats?.selesai ?? 0;
+    const total = stats?.total ?? 0;
 
     return (
         <div className="mx-auto max-w-5xl flex flex-col gap-6">
@@ -59,8 +63,8 @@ function DashboardPage() {
                         <p className="text-xs font-semibold text-muted-foreground">Dari {rows.length} tiket penjemputan terakhir</p>
                     </Stat>
                 </div>
-                <Stat label="PENJEMPUAN SELESAI" value={`${done} / ${rows.length}`}>
-                    <Progress value={rows.length ? (done / rows.length) * 100 : 0} />
+                <Stat label="PENJEMPUAN SELESAI" value={`${done} / ${total}`}>
+                    <Progress value={total ? (done / total) * 100 : 0} green />
                 </Stat>
             </div>
 
@@ -108,16 +112,68 @@ function PickupPage() {
     // Default hanya tugas yang di-plot ke saya — tiket tanpa penugasan/tugas orang
     // lain tidak tampil (uncheck untuk melihat semua).
     const [mineOnly, setMineOnly] = useState(true);
+    // #1: filter tanggal jadwal harian — kosong = semua tanggal.
+    const [dateFilter, setDateFilter] = useState('');
     const { user } = useAuth();
     // 'semua' bukan status di BE — jangan kirim param status (dulu bikin list selalu kosong).
+    // #1: filter jadwal harian pakai param ?date= (server-side, didukung BE).
     const statusQ = status === 'semua' ? '' : `status=${status}&`;
     const mineQ = mineOnly && user?.id ? `officer_id=${user.id}&` : '';
-    const { data, loading, error, reload } = useApi(`/pickups?${statusQ}${mineQ}per_page=25`);
+    const dateQ = dateFilter ? `date=${dateFilter}&` : '';
+    const { data, loading, error, reload } = useApi(`/pickups?${statusQ}${mineQ}${dateQ}per_page=25`);
+
     // Prioritas: yang BELUM diambil selalu di atas; tiket selesai (sudah
     // ditimbang) otomatis turun ke bawah. Batal paling bawah.
     const priority = { menunggu: 0, proses: 1, selesai: 2, batal: 3 };
     const rows = [...(data ?? [])].sort((a, b) =>
         (priority[a.status] ?? 9) - (priority[b.status] ?? 9));
+
+    // ── #2: urutan antrean penjemputan (drag & drop) ─────────────
+    // Urutan disimpan optimistic; sinkron ke BE PATCH /pickups/reorder (kontrak
+    // #2 belum tersedia → fallback localStorage + notice, tidak menghalangi demo).
+    const QUEUE_KEY = `pickup_queue_order_${user?.id ?? 'x'}`;
+    const [queueIds, setQueueIds] = useState([]);
+    const [queueNotice, setQueueNotice] = useState('');
+    const [dragId, setDragId] = useState(null);
+
+    const waiting = rows.filter(p => p.status === 'menunggu');
+    const queueVersion = waiting.map(p => p.id).join(',');
+    useEffect(() => {
+        // Saat daftar tiket berubah: gabungkan urutan tersimpan dengan tiket baru.
+        let saved = [];
+        try { saved = JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '[]'); } catch { saved = []; }
+        const merged = [...waiting.map(p => p.id)].sort((a, b) => {
+            const ia = saved.indexOf(a), ib = saved.indexOf(b);
+            return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        });
+        setQueueIds(merged);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [queueVersion, QUEUE_KEY]);
+
+    const persistQueue = async (ids) => {
+        setQueueIds(ids);
+        try {
+            await api('/pickups/reorder', { method: 'PATCH', body: { orders: ids.map((id, i) => ({ id, sort_order: i + 1 })) } });
+            localStorage.removeItem(QUEUE_KEY);
+            setQueueNotice('');
+        } catch {
+            localStorage.setItem(QUEUE_KEY, JSON.stringify(ids));
+            setQueueNotice('Endpoint reorder backend belum tersedia — urutan tersimpan di perangkat ini.');
+        }
+    };
+
+    const onDrop = (targetId) => {
+        if (!dragId || dragId === targetId) { setDragId(null); return; }
+        const ids = [...queueIds];
+        const from = ids.indexOf(dragId);
+        const to = ids.indexOf(targetId);
+        if (from === -1 || to === -1) { setDragId(null); return; }
+        ids.splice(to, 0, ids.splice(from, 1)[0]);
+        setDragId(null);
+        persistQueue(ids);
+    };
+
+    const queueIndex = (id) => queueIds.indexOf(id) + 1;
 
     // Step 2: klik aksi → buka tampilan timbangan untuk TIKET ini.
     // (Bug "minta jemput nyangkut": dulu kirim p.member → WeighingForm bikin
@@ -133,29 +189,52 @@ function PickupPage() {
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-foreground md:text-3xl">Daftar Penjemputan</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">Tugas penjemputan sampah dari anggota koperasi.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Tugas penjemputan sampah sampai anggota koperasi — atur urutan kunjungan via geser.</p>
                 </div>
-                <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-4 py-2.5 text-primary shadow-xs">
-                    <CalendarDays size={18} />
-                    <div>
-                        <p className="text-[10px] uppercase font-bold text-muted-foreground">Status Filter</p>
-                        <select
-                            value={status}
-                            onChange={e => setStatus(e.target.value)}
-                            className="bg-transparent text-xs font-bold text-foreground outline-none"
-                        >
-                            <option value="semua">Semua</option>
-                            <option value="menunggu">Menunggu</option>
-                            <option value="selesai">Selesai</option>
-                            <option value="batal">Batal</option>
-                        </select>
+                <div className="flex flex-wrap items-center gap-2.5">
+                    <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-4 py-2.5 text-primary shadow-xs">
+                        <CalendarDays size={18} />
+                        <div>
+                            <p className="text-[10px] uppercase font-bold text-muted-foreground">Status Filter</p>
+                            <select
+                                value={status}
+                                onChange={e => setStatus(e.target.value)}
+                                className="bg-transparent text-xs font-bold text-foreground outline-none"
+                            >
+                                <option value="semua">Semua</option>
+                                <option value="menunggu">Menunggu</option>
+                                <option value="selesai">Selesai</option>
+                                <option value="batal">Batal</option>
+                            </select>
+                        </div>
                     </div>
+                    {/* #1: jadwal harian — pilih tanggal tunggal */}
+                    <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 shadow-xs">
+                        <div>
+                            <p className="text-[10px] uppercase font-bold text-muted-foreground">Jadwal Tanggal</p>
+                            <input
+                                type="date"
+                                value={dateFilter}
+                                onChange={e => setDateFilter(e.target.value)}
+                                aria-label="Filter tanggal jadwal"
+                                className="bg-transparent text-xs font-bold text-foreground outline-none"
+                            />
+                        </div>
+                        {dateFilter && (
+                            <button type="button" onClick={() => setDateFilter('')} aria-label="Hapus filter tanggal"
+                                className="text-muted-foreground hover:text-foreground">✕</button>
+                        )}
+                    </div>
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-xs font-semibold text-foreground shadow-xs">
+                        <input type="checkbox" checked={mineOnly} onChange={e => setMineOnly(e.target.checked)} className="accent-primary" />
+                        Hanya tugas saya
+                    </label>
                 </div>
-                <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-xs font-semibold text-foreground shadow-xs">
-                    <input type="checkbox" checked={mineOnly} onChange={e => setMineOnly(e.target.checked)} className="accent-primary" />
-                    Hanya tugas saya
-                </label>
             </div>
+
+            {queueNotice && (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800">{queueNotice}</p>
+            )}
 
             <div className="flex flex-col gap-4">
                 {loading && (
@@ -167,8 +246,27 @@ function PickupPage() {
                     </div>
                 )}
                 {rows.map(p => (
-                    <article key={p.id} className="flex flex-col justify-between gap-5 rounded-2xl border border-border/80 bg-card p-6 shadow-xs sm:flex-row sm:items-center">
+                    <article
+                        key={p.id}
+                        draggable={p.status === 'menunggu'}
+                        onDragStart={() => setDragId(p.id)}
+                        onDragOver={e => p.status === 'menunggu' && e.preventDefault()}
+                        onDrop={() => p.status === 'menunggu' && onDrop(p.id)}
+                        onDragEnd={() => setDragId(null)}
+                        className={cn(
+                            'flex flex-col justify-between gap-5 rounded-2xl border border-border/80 bg-card p-6 shadow-xs sm:flex-row sm:items-center',
+                            p.status === 'menunggu' && 'cursor-grab active:cursor-grabbing',
+                            dragId === p.id && 'opacity-50',
+                        )}
+                    >
                         <div className="flex gap-4">
+                            {/* #2: nomor urut antrean — geser kartu untuk ubah prioritas kunjungan */}
+                            {p.status === 'menunggu' && (
+                                <span className="flex size-12 shrink-0 flex-col items-center justify-center rounded-xl bg-amber-100 text-amber-800" title="Urutan antrean — geser untuk mengubah">
+                                    <span className="text-[9px] font-bold uppercase leading-none">Urutan</span>
+                                    <strong className="text-lg font-extrabold leading-tight">{queueIndex(p.id) || '–'}</strong>
+                                </span>
+                            )}
                             <span className={cn(
                                 'flex size-12 shrink-0 items-center justify-center rounded-xl',
                                 p.status === 'selesai' ? 'bg-emerald-100 text-emerald-700' : 'bg-primary text-white'

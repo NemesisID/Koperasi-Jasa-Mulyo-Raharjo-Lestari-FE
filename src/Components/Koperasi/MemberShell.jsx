@@ -4,7 +4,7 @@ import { useAuth, logout } from '@/lib/auth';
 import { useApi, rp } from '@/lib/api';
 import {
     Bell, CalendarClock, CheckCircle2, ChevronDown, CircleHelp, FileBarChart, History,
-    LayoutGrid, LogOut, Menu, Settings, Tags, UserRound, WalletCards, X,
+    LayoutGrid, LogOut, Menu, Settings, Tags, UserRound, Wallet, WalletCards, X,
 } from 'lucide-react';
 import { ConfirmPopup } from './Popups';
 
@@ -115,6 +115,12 @@ export function MemberShell({ children, currentPage, setPage }) {
                 <button onClick={() => nav('pengambilan-sampah')} className={navBtnCls(is('pengambilan-sampah'))}>
                     <History size={18} />
                     <span>Riwayat Pengambilan</span>
+                </button>
+
+                {/* Dompet & SHU (aktifkan halaman yatim WalletAndShu) */}
+                <button onClick={() => nav('dompet-shu')} className={navBtnCls(is('dompet-shu'))}>
+                    <Wallet size={18} />
+                    <span>Dompet & SHU</span>
                 </button>
 
                 {/* Laporan */}

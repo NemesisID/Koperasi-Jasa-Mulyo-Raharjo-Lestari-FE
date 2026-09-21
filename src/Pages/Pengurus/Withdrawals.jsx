@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { Banknote, Check, Search, X } from 'lucide-react';
 import { PageHeader } from '@/Components/Koperasi/ManagerUI';
-import { Modal } from '@/Components/Koperasi/Popups';
+import { Modal, ConfirmPopup } from '@/Components/Koperasi/Popups';
 import { useApi, api, rp, dfmt } from '@/lib/api';
 import { usePopup } from './Index';
 
@@ -118,6 +118,7 @@ export default function WithdrawalsPage() {
     const [q, setQ] = useState('');
     const [target, setTarget] = useState(null);
     const [busyId, setBusyId] = useState('');
+    const [confirming, setConfirming] = useState(null); // { r, action } menunggu konfirmasi (#19)
 
     const members = (data ?? []).filter(m =>
         (m.name ?? '').toLowerCase().includes(q.toLowerCase()) || (m.member_code ?? '').toLowerCase().includes(q.toLowerCase())
@@ -170,11 +171,11 @@ export default function WithdrawalsPage() {
                                         <td className="px-6 py-4 text-muted-foreground">{dfmt(r.created_at)}</td>
                                         <td className="px-6 py-4">
                                             <div className="flex gap-2">
-                                                <button onClick={() => decide(r, 'approve')} disabled={busyId === r.id}
+                                                <button onClick={() => setConfirming({ r, action: 'approve' })} disabled={busyId === r.id}
                                                     className="flex h-8 items-center gap-1.5 rounded-xl bg-emerald-700 px-3 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50">
                                                     <Check size={14} /> Setujui
                                                 </button>
-                                                <button onClick={() => decide(r, 'reject')} disabled={busyId === r.id}
+                                                <button onClick={() => setConfirming({ r, action: 'reject' })} disabled={busyId === r.id}
                                                     className="flex h-8 items-center gap-1.5 rounded-xl border border-rose-200 px-3 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50">
                                                     <X size={14} /> Tolak
                                                 </button>
@@ -244,6 +245,21 @@ export default function WithdrawalsPage() {
                     member={target}
                     onClose={() => setTarget(null)}
                     onDone={msg => { setTarget(null); showStatus('Penarikan Berhasil', msg); }}
+                />
+            )}
+
+            {/* #19: keputusan penarikan (kredit/debet saldo nyata) wajib konfirmasi */}
+            {confirming && (
+                <ConfirmPopup
+                    open
+                    title={confirming.action === 'approve' ? 'Setujui Penarikan?' : 'Tolak Penarikan?'}
+                    description={confirming.action === 'approve'
+                        ? `Saldo ${rp(confirming.r.amount)} milik ${confirming.r.member?.name ?? 'anggota'} langsung terpotong dan diserahkan tunai.`
+                        : `Pengajuan ${rp(confirming.r.amount)} milik ${confirming.r.member?.name ?? 'anggota'} akan ditolak dan anggota harus mengajukan ulang.`}
+                    actionLabel={confirming.action === 'approve' ? 'Ya, Setujui' : 'Ya, Tolak'}
+                    tone={confirming.action === 'approve' ? 'primary' : 'destructive'}
+                    onCancel={() => setConfirming(null)}
+                    onConfirm={() => { const c = confirming; setConfirming(null); decide(c.r, c.action); }}
                 />
             )}
         </div>

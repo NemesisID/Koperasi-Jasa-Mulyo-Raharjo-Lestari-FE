@@ -9,6 +9,7 @@ import {
 import { MemberShell } from '@/Components/Koperasi/MemberShell';
 import ComplaintFormModal from '@/Components/Koperasi/ComplaintFormModal';
 import PriceBoardPage from './PriceBoard';
+import WalletAndShuPage from './WalletAndShu';
 import {
     DataPanel, FilterButton, MetricCard, PageTitle, Status
 } from '@/Components/Koperasi/MemberUI';
@@ -113,6 +114,15 @@ function SummaryCard({ title, amount, note }) {
     );
 }
 
+// #15: label sumber mutasi ramah-baca — potongan saldo rutin masuk sini dari BE.
+const SOURCE_LABEL = {
+    sampah: 'Setoran Sampah',
+    shu: 'SHU',
+    penarikan: 'Penarikan',
+    potongan_saldo: 'Potongan Tagihan Rutin',
+    penyesuaian: 'Penyesuaian',
+};
+
 // ─── 1. Dashboard Sub-page ────────────────────────────────────
 function DashboardPage({ setPage }) {
     const { user } = useAuth();
@@ -139,17 +149,40 @@ function DashboardPage({ setPage }) {
                     </div>
                 </div>
                 <div className="self-start sm:self-center">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3.5 py-1 text-xs font-bold text-emerald-800">
-                        <span className="size-2 rounded-full bg-emerald-600" /> Anggota Aktif
-                    </span>
+                    {/* #15: status anggota dari data (aktif / nonaktif tunggakan / suspend) */}
+                    {member?.status === 'nonaktif' ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-3.5 py-1 text-xs font-bold text-rose-800">
+                            <span className="size-2 rounded-full bg-rose-600" /> Non-aktif
+                        </span>
+                    ) : member?.status === 'suspend' ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3.5 py-1 text-xs font-bold text-amber-800">
+                            <span className="size-2 rounded-full bg-amber-500" /> Suspend
+                        </span>
+                    ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3.5 py-1 text-xs font-bold text-emerald-800">
+                            <span className="size-2 rounded-full bg-emerald-600" /> Anggota Aktif
+                        </span>
+                    )}
                 </div>
             </section>
+
+            {/* #15: tunggakan hold tagihan rutin → non-aktif; bayar manual di koperasi */}
+            {member?.status === 'nonaktif' && (
+                <section className="flex flex-col gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h3 className="text-sm font-bold text-rose-800">Status Anda non-aktif — tagihan rutin 3 bulan tidak tercukupi dari saldo.</h3>
+                        <p className="mt-0.5 text-xs font-medium text-rose-700">
+                            Lakukan pembayaran manual paket rutin Rp50.000 di koperasi (pengurus) untuk mengaktifkan kembali akun Anda.
+                        </p>
+                    </div>
+                </section>
+            )}
 
             {/* 3 Metric Cards — saldo dipisah sumber: sampah vs SHU */}
             <div className="grid gap-5 md:grid-cols-3">
                 <MetricCard icon={<Leaf size={20} />} label="Saldo dari Sampah" value={rp(wallet?.balance_from_trash)} note="Hasil setoran sampah (net)" tone="green" />
                 <MetricCard icon={<Landmark size={20} />} label="Saldo dari SHU" value={rp(wallet?.balance_from_shu)} note="Dividen tahunan koperasi" tone="gold" />
-                <MetricCard icon={<WalletCards size={20} />} label="Total Saldo Saat Ini" value={rp(wallet?.current_balance)} note={`Sudah ditarik: ${rp(wallet?.total_withdrawn)} · Pending: ${rp(wallet?.pending_withdrawal)}`} />
+                <MetricCard icon={<WalletCards size={20} />} label="Total Saldo Saat Ini" value={rp(wallet?.current_balance)} note={`Terkunci hold tagihan: ${rp(wallet?.savings_hold)} · Ditarik: ${rp(wallet?.total_withdrawn)}`} />
             </div>
 
             {/* Riwayat Aktivitas Keuangan */}
@@ -171,7 +204,10 @@ function DashboardPage({ setPage }) {
                         : rows.map(r => [
                             <span key="date" className="text-muted-foreground">{dfmt(r.date)}</span>,
                             <strong key="desc" className="font-semibold text-foreground">{r.description ?? '-'}</strong>,
-                            <span key="src" className="inline-flex rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-primary">{r.source ?? r.type}</span>,
+                            <span key="src" className={cn(
+                                'inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                                r.source === 'potongan_saldo' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-primary'
+                            )}>{SOURCE_LABEL[r.source] ?? r.source ?? r.type}</span>,
                             <strong key="amt" className={cn('font-bold', Number(r.amount) >= 0 ? 'text-emerald-700' : 'text-rose-600')}>
                                 {Number(r.amount) >= 0 ? '+ ' : '- '}{rp(Math.abs(Number(r.amount)))}
                             </strong>
@@ -676,6 +712,8 @@ function MemberPages({ page, setPage, openForm }) {
             return <SukarelaPage />;
         case 'pengambilan-sampah':
             return <PickupHistoryPage openForm={openForm} />;
+        case 'dompet-shu':
+            return <WalletAndShuPage />;
         case 'harga-sampah':
             return <PriceBoardPage />;
         case 'laporan':
@@ -698,6 +736,7 @@ const memberPageTitles = {
     'laporan': 'Pusat Laporan Anggota',
     'laporan-shu': 'Laporan SHU Anggota',
     'laporan-saldo': 'Laporan Saldo Sampah',
+    'dompet-shu': 'Dompet & SHU',
 };
 
 export default function AnggotaIndex() {

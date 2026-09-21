@@ -79,14 +79,14 @@ export default function PriceBoardPage() {
                                     {trend}
                                 </span>
                             </div>
-                            {/* Hanya 2 nominal untuk anggota: bersih (diterima) & kotor */}
+                            {/* #4: istilah seragam — harga beli (terpilah) & tarif belum-terpilah */}
                             <div className="mt-4 grid grid-cols-2 gap-3">
                                 <div className="rounded-xl border border-primary/40 bg-[#eaf1fd] p-3 text-center">
-                                    <p className="text-[10px] font-bold uppercase text-primary">Harga Bersih</p>
+                                    <p className="text-[10px] font-bold uppercase text-primary">Harga Beli</p>
                                     <strong className="mt-0.5 block text-sm font-extrabold break-words text-primary md:text-base">{rp(item.price_member)}</strong>
                                 </div>
                                 <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3 text-center">
-                                    <p className="text-[10px] font-bold uppercase text-muted-foreground">Harga Kotor</p>
+                                    <p className="text-[10px] font-bold uppercase text-muted-foreground">Belum Terpilah</p>
                                     <strong className="mt-0.5 block text-sm font-extrabold break-words text-foreground md:text-base">{rp(item.price_unsorted)}</strong>
                                 </div>
                             </div>

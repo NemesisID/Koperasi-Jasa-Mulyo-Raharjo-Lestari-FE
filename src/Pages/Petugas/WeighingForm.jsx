@@ -46,10 +46,25 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
     // R4 (revisi fase-2): dokumentasi foto timbang — kamera native + geotag + timestamp.
     const [photo, setPhoto] = useState(null);
     const [photoMeta, setPhotoMeta] = useState(null); // { time, lat, lng | null }
+    // #10: id tiket yang upload fotonya gagal — menahan navigasi balik + tombol coba ulang.
+    const [photoRetry, setPhotoRetry] = useState(null);
 
     const onPhotoChange = (e) => {
         const file = e.target.files?.[0];
         if (!file) { setPhoto(null); setPhotoMeta(null); return; }
+        // Validasi awal di FE supaya kegagalan jelas SEBELUM timbangan disimpan,
+        // bukan error diam-diam dari backend setelahnya (#10).
+        if (!file.type.startsWith('image/')) {
+            setError('Foto dokumentasi harus berupa gambar (JPG/PNG).');
+            e.target.value = '';
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            setError('Ukuran foto maksimal 5 MB — ambil ulang dengan resolusi lebih kecil.');
+            e.target.value = '';
+            return;
+        }
+        setError('');
         setPhoto(file);
         setPhotoMeta({ time: new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }), lat: null, lng: null });
         // GPS opsional: kalau ditolak/off, foto tetap terunggah tanpa koordinat.
@@ -67,6 +82,27 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
             fd.append('longitude', photoMeta.lng);
         }
         await api(`/pickups/${pickupId}/photo`, { method: 'POST', body: fd });
+    };
+
+    // #10: unggah ulang foto untuk tiket yang timbangannya sudah tersimpan.
+    const retryPhotoUpload = async () => {
+        if (!photoRetry) return;
+        setSubmitting(true);
+        setError('');
+        try {
+            await uploadPhoto(photoRetry);
+            setPhotoRetry(null);
+            setPhoto(null);
+            setPhotoMeta(null);
+            if (onBack) { onBack(); return; }
+            setMemberSearch('');
+            setSelectedMemberId('');
+            setRows([{ categoryId: defaultCatId, quantity: '' }]);
+        } catch (err) {
+            setError(`Gagal mengunggah foto: ${err.message}. Periksa koneksi lalu coba lagi.`);
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     // Default category when loaded
@@ -172,12 +208,17 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
                 body: { items: payloadItems },
             });
 
-            // R4: upload foto dokumentasi (opsional) — kegagalan tidak membatalkan timbangan yang sudah tersimpan.
+            // R4: upload foto dokumentasi (opsional) — kegagalan tidak membatalkan timbangan
+            // yang sudah tersimpan, tapi TIDAK ditelan diam-diam (#10): aliran step-2 menahan
+            // navigasi balik supaya pesan + tombol coba ulang tetap terlihat petugas.
+            let photoFailed = false;
             if (photo) {
                 try {
                     await uploadPhoto(pickupId);
                 } catch (photoErr) {
-                    setError(`Timbangan tersimpan, namun gagal mengunggah foto: ${photoErr.message}`);
+                    photoFailed = true;
+                    setPhotoRetry(pickupId);
+                    setError(`Timbangan TERSIMPAN, namun gagal mengunggah foto: ${photoErr.message}.`);
                 }
             }
 
@@ -203,6 +244,9 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
                 fee,
                 net: weighRes.data?.net_earned ?? net,
             });
+
+            // Foto gagal → tahan di form (pesan + retry terlihat); jangan navigasi balik dulu.
+            if (photoFailed) return;
 
             // Reset form (aliran step-2: kembali ke daftar pickup setelah timbangan tersimpan)
             if (onBack) {
@@ -444,6 +488,21 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
                             </p>
                         )}
                     </div>
+                    {photoRetry && (
+                        <div className="flex flex-col gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-xs font-semibold text-rose-700">
+                                Unggah foto gagal — timbangan sudah tersimpan. Coba unggah ulang sebelum kembali ke daftar.
+                            </p>
+                            <button
+                                type="button"
+                                onClick={retryPhotoUpload}
+                                disabled={submitting}
+                                className="h-9 shrink-0 rounded-xl bg-rose-600 px-4 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                            >
+                                {submitting ? 'Mengunggah…' : 'Coba Unggah Ulang'}
+                            </button>
+                        </div>
+                    )}
                 </section>
 
                 {/* Kalkulator preview real-time (FE-3.3) */}
@@ -454,13 +513,11 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
                         </h2>
                         <div className="flex flex-col gap-2.5 text-sm border-t border-white/15 pt-4">
                             <div className="flex justify-between">
-                                <span className="text-blue-100">Nilai Kotor</span>
+                                <span className="text-blue-100">Nilai Setoran</span>
                                 <strong className="font-bold">{rp(gross)}</strong>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-blue-100">Potongan Admin Koperasi (20%)</span>
-                                <strong className="font-bold text-rose-300">−{rp(fee)}</strong>
-                            </div>
+                            {/* #9: baris potongan admin 20% dihapus dari tampilan petugas —
+                                angka bersih tetap dihitung sama (gross − 20%) di lib/weighing.js */}
                             <div className="flex items-baseline justify-between border-t border-white/15 pt-3">
                                 <span className="font-bold text-emerald-300">Diterima Anggota</span>
                                 <strong className="text-2xl font-extrabold text-emerald-300 md:text-3xl">{rp(net)}</strong>

@@ -7,14 +7,16 @@ import {
     FileSpreadsheet, FileText, Info, Plus, Search, Send, X
 } from 'lucide-react';
 import { ManagerShell } from '@/Components/Koperasi/ManagerShell';
-import { FormPopup, Modal, StatusPopup } from '@/Components/Koperasi/Popups';
+import { FormPopup, Modal, StatusPopup, ConfirmPopup } from '@/Components/Koperasi/Popups';
 import { api, useApi, download, rp, dfmt } from '@/lib/api';
 import ComplaintsDeskPage from './ComplaintsDesk';
 import TrashPricesPage from './TrashPrices';
 import UsersPage from './Users';
+import MembersPage from './Members';
 import WajibOverviewPage from './WajibOverview';
 import PickupMonitorPage from './PickupMonitor';
 import WithdrawalsPage from './Withdrawals';
+import PriceLogPage from './PriceLogPage';
 
 // ─── Popup context ────────────────────────────────────────────
 const PopupCtx = createContext({ openForm: () => {}, showStatus: () => {} });
@@ -360,6 +362,7 @@ function ShuPage() {
     const { openForm, showStatus } = usePopup();
     const { data, loading, reload } = useApi('/shu/periods');
     const [detail, setDetail] = useState(null); // row draft yang dilihat/diedit
+    const [confirmPublish, setConfirmPublish] = useState(null); // #19: konfirmasi sebelum bagikan
     const rows = data ?? [];
     const currentYear = new Date().getFullYear();
     const existingDraft = rows.find(r => r.year === currentYear);
@@ -434,7 +437,7 @@ function ShuPage() {
                                                     <Info size={14} /> Info / Edit
                                                 </button>
                                                 <button
-                                                    onClick={() => publishDraft(r)}
+                                                    onClick={() => setConfirmPublish(r)}
                                                     className="flex h-9 items-center gap-1.5 rounded-xl bg-emerald-700 px-3.5 text-xs font-semibold text-white hover:bg-emerald-800"
                                                 >
                                                     <Send size={14} /> Bagikan
@@ -450,6 +453,18 @@ function ShuPage() {
             </section>
 
             {detail && <ShuDraftModal distribution={detail} onClose={() => { setDetail(null); reload(); }} />}
+
+            {/* #19: membagikan SHU mengubah saldo seluruh anggota — wajib konfirmasi */}
+            {confirmPublish && (
+                <ConfirmPopup
+                    open
+                    title={`Bagikan SHU ${confirmPublish.year} ke seluruh anggota?`}
+                    description="Saldo anggota langsung dikredit sesuai porsi masing-masing dan status berubah menjadi dibagikan. Tindakan ini tidak dapat dibatalkan."
+                    actionLabel="Ya, Bagikan SHU"
+                    onCancel={() => setConfirmPublish(null)}
+                    onConfirm={() => { const r = confirmPublish; setConfirmPublish(null); publishDraft(r); }}
+                />
+            )}
         </div>
     );
 
@@ -975,6 +990,8 @@ function ManagerPages({ page, setPage }) {
             return <DashboardPage setPage={setPage} />;
         case 'harga-sampah':
             return <TrashPricesPage />;
+        case 'log-harga':
+            return <PriceLogPage />;
         case 'simpanan-pokok':
             return <SavingsByLabelPage label="POKOK" />;
         case 'simpanan-wajib':
@@ -983,6 +1000,8 @@ function ManagerPages({ page, setPage }) {
             return <PickupMonitorPage />;
         case 'manajemen-user':
             return <UsersPage showStatus={showStatus} />;
+        case 'manajemen-anggota':
+            return <MembersPage />;
         case 'shu':
             return <ShuPage />;
         case 'penarikan':
@@ -1009,6 +1028,7 @@ function ManagerPages({ page, setPage }) {
 const pageTitles = {
     'dashboard': 'Dashboard Pengurus',
     'harga-sampah': 'Manajemen Harga Sampah',
+    'log-harga': 'Log Perubahan Harga',
     'simpanan-pokok': 'Simpanan Pokok',
     'simpanan-wajib': 'Simpanan Wajib',
     'shu': 'Sisa Hasil Usaha (SHU)',
@@ -1017,6 +1037,7 @@ const pageTitles = {
     'pengeluaran': 'Manajemen Pengeluaran',
     'penjemputan': 'Monitoring Pengambilan Sampah',
     'manajemen-user': 'Manajemen Pengguna',
+    'manajemen-anggota': 'Manajemen Anggota',
     'pengaduan': 'Helpdesk Pengaduan',
     'laporan': 'Pusat Laporan',
     'laporan-laba-rugi': 'Laporan Laba Rugi (P&L)',

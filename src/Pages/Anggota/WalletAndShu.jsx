@@ -196,6 +196,7 @@ export default function WalletAndShuPage() {
         const catLabel = m.source === 'sampah' ? 'Sampah'
             : m.source === 'shu' ? 'SHU'
             : m.source === 'penarikan' ? 'Penarikan'
+            : m.source === 'potongan_saldo' ? 'Potongan Tagihan Rutin' // #15
             : 'Penyesuaian';
         const isPositive = m.type === 'kredit';
 

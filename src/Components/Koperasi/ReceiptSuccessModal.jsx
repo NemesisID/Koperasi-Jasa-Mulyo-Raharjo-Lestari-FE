@@ -3,8 +3,7 @@
 import QRCode from 'react-qr-code';
 import { CheckCircle2, MessageCircle, Printer, X } from 'lucide-react';
 import { Modal } from './Popups';
-
-const rp = (n) => 'Rp ' + n.toLocaleString('id-ID');
+import { rp } from '@/lib/api';
 
 export default function ReceiptSuccessModal({ receipt, onClose }) {
     if (!receipt) return null;
@@ -14,7 +13,7 @@ export default function ReceiptSuccessModal({ receipt, onClose }) {
         `NOTA DIGITAL ${receipt.id}\n` +
         `${receipt.member}\n${receipt.date}\n\n` +
         receipt.items.map(i => `${i.name}: ${i.weight} ${i.unit} × ${rp(i.price)} = ${rp(i.total)}`).join('\n') +
-        `\n\nNilai Kotor: ${rp(receipt.gross)}\nPotongan Admin 20%: -${rp(receipt.fee)}\nSaldo Masuk: ${rp(receipt.net)}\n\nVerifikasi: ${verifyUrl}`
+        `\n\nNilai Setoran: ${rp(receipt.gross)}\nSaldo Masuk: ${rp(receipt.net)}\n\nVerifikasi: ${verifyUrl}`
     );
 
     return (
@@ -72,15 +71,12 @@ export default function ReceiptSuccessModal({ receipt, onClose }) {
                     </table>
                 </div>
 
-                {/* Ringkasan nilai */}
+                {/* Ringkasan nilai — potongan 20% tidak ditampilkan lagi di nota petugas (#9),
+                    angka bersih tetap dihitung backend */}
                 <div className="flex flex-col gap-2 rounded-xl bg-slate-50/70 border border-border/60 p-4 text-sm">
                     <div className="flex justify-between text-muted-foreground">
-                        <span>Nilai Kotor</span>
+                        <span>Nilai Setoran</span>
                         <strong className="font-semibold text-foreground">{rp(receipt.gross)}</strong>
-                    </div>
-                    <div className="flex justify-between text-muted-foreground">
-                        <span>Potongan Admin Koperasi (20%)</span>
-                        <strong className="font-semibold text-rose-600">−{rp(receipt.fee)}</strong>
                     </div>
                     <div className="flex justify-between border-t border-border pt-2">
                         <span className="font-bold text-foreground">Saldo Masuk Anggota</span>

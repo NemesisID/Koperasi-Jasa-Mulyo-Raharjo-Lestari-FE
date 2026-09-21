@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import { login, useAuth, logout } from '@/lib/auth';
 import { Building2, Eye, EyeOff, Leaf, LockKeyhole, LogIn, UserRound } from 'lucide-react';
@@ -99,8 +99,7 @@ function LoginCard() {
                 </button>
 
                 <p className="text-center text-xs text-muted-foreground">
-                    Belum punya akun?{' '}
-                    <Link to="/register" className="font-semibold text-primary hover:underline">Daftar sebagai anggota</Link>
+                    Pendaftaran anggota hanya dilakukan oleh pengurus koperasi.
                 </p>
             </form>
 
