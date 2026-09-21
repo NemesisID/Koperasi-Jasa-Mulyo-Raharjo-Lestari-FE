@@ -6,7 +6,6 @@ import {
     Camera, CheckCircle2, Home, Package, Plus, Scale, Trash2,
 } from 'lucide-react';
 import ReceiptSuccessModal from '@/Components/Koperasi/ReceiptSuccessModal';
-import { calcWeighing } from '@/lib/weighing';
 import { api, useApi, rp } from '@/lib/api';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
@@ -23,7 +22,7 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
     const ticketMember = initialPickup?.member ?? null;
     const [memberSearch, setMemberSearch] = useState(ticketMember ? `${ticketMember.member_code} - ${ticketMember.name}` : '');
     const [selectedMemberId, setSelectedMemberId] = useState(ticketMember?.id ?? '');
-    const [location, setLocation] = useState(initialPickup?.location_type ?? 'gudang');
+    const [location, /* setter tidak dipakai: lokasi mengikuti tiket */] = useState(initialPickup?.location_type ?? 'gudang');
     const [isSorted, setIsSorted] = useState(initialPickup ? Boolean(initialPickup.is_sorted) : true); // true = bersih/terpilah, false = kotor
     const [rows, setRows] = useState([{ categoryId: '', quantity: '' }]);
     const [receipt, setReceipt] = useState(null);
@@ -36,10 +35,10 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
     useEffect(() => {
         const items = ticketDetail?.items;
         if (items?.length) {
-            setRows(items.map(it => ({
+            Promise.resolve().then(() => setRows(items.map(it => ({
                 categoryId: String(it.category?.id ?? ''),
                 quantity: it.weight_kg ? String(it.weight_kg) : String(it.unit_count ?? ''),
-            })));
+            }))));
         }
     }, [ticketDetail]);
 
@@ -111,9 +110,13 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
     const getPriceOf = (catId) => {
         const cat = categories.find(c => String(c.id) === String(catId));
         if (!cat) return 0;
-        // Sesuai engine BE: sorted = harga jual, unsorted = harga kotor;
-        // lokasi jemput (rumah/pasar) dipotong biaya antar (logam 2.000 / lain 300).
-        const base = isSorted ? Number(cat.price_sell || 0) : Number(cat.price_unsorted || 0);
+        // Sinkron BE (TrashWeighingService): yang dibayar anggota = HARGA BELI
+        // katalog — sorted = price_member (jual − 20%), unsorted = harga kotor − 20%
+        // (price_member_unsorted tidak dikirim katalog → hitung dari price_unsorted).
+        // Lokasi jemput (rumah/pasar) dipotong ongkos: logam 2.000 / lainnya 300.
+        const base = isSorted
+            ? Number(cat.price_member ?? Math.round(Number(cat.price_sell || 0) * 0.8))
+            : Math.round(Number(cat.price_unsorted || 0) * 0.8);
         if (String(location).startsWith('jemput')) {
             const deduction = cat.type === 'logam' ? 2000 : 300;
             return Math.max(0, base - deduction);
@@ -121,15 +124,12 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
         return base;
     };
 
-    // Kalkulator preview real-time (FE-3.3)
-    const { gross, fee, net } = useMemo(() => {
-        return calcWeighing(
-            rows.map(r => ({
-                weight: r.quantity,
-                price: getPriceOf(r.categoryId || defaultCatId),
-            }))
-        );
-    }, [rows, location, isSorted, categories, defaultCatId]);
+    // Preview real-time — sinkron BE: potongan 20% sudah melekat di harga beli
+    // katalog, jadi nilai setoran = nilai yang masuk ke saldo anggota.
+    const gross = useMemo(() => rows.reduce(
+        (s, r) => s + (Number(r.quantity) || 0) * getPriceOf(r.categoryId || defaultCatId), 0,
+    ), [rows, location, isSorted, categories, defaultCatId]);
+    const net = gross;
 
     const setRow = (i, patch) =>
         setRows(prev => prev.map((r, j) => j === i ? { ...r, ...patch } : r));
@@ -241,7 +241,6 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
                                 location: location === 'gudang' ? 'Diantar ke Gudang' : location === 'jemput_pasar' ? 'Dijemput di Pasar' : 'Dijemput di Rumah',
                 items: receiptItems,
                 gross,
-                fee,
                 net: weighRes.data?.net_earned ?? net,
             });
 

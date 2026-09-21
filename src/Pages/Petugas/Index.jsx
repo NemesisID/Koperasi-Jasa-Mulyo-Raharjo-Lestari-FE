@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { OfficerShell } from '@/Components/Koperasi/OfficerShell';
 import { StatusPopup } from '@/Components/Koperasi/Popups';
-import { useApi, rp, dfmt } from '@/lib/api';
+import { useApi, api, rp, dfmt } from '@/lib/api';
 import WeighingFormPage from './WeighingForm';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
@@ -129,8 +129,9 @@ function PickupPage() {
         (priority[a.status] ?? 9) - (priority[b.status] ?? 9));
 
     // ── #2: urutan antrean penjemputan (drag & drop) ─────────────
-    // Urutan disimpan optimistic; sinkron ke BE PATCH /pickups/reorder (kontrak
-    // #2 belum tersedia → fallback localStorage + notice, tidak menghalangi demo).
+    // Sinkron ke BE PATCH /pickups/reorder — kontrak final (R23): body
+    // { ids: [...] } berurutan sesuai posisi baru; id yang tak dikirim tidak diubah.
+    // Optimistic: urutan UI diperbarui dulu; gagal → fallback localStorage + notice.
     const QUEUE_KEY = `pickup_queue_order_${user?.id ?? 'x'}`;
     const [queueIds, setQueueIds] = useState([]);
     const [queueNotice, setQueueNotice] = useState('');
@@ -139,26 +140,32 @@ function PickupPage() {
     const waiting = rows.filter(p => p.status === 'menunggu');
     const queueVersion = waiting.map(p => p.id).join(',');
     useEffect(() => {
+        let live = true;
         // Saat daftar tiket berubah: gabungkan urutan tersimpan dengan tiket baru.
-        let saved = [];
-        try { saved = JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '[]'); } catch { saved = []; }
-        const merged = [...waiting.map(p => p.id)].sort((a, b) => {
-            const ia = saved.indexOf(a), ib = saved.indexOf(b);
-            return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        // setState di dalam microtask (bukan body effect) — hindari cascading render.
+        Promise.resolve().then(() => {
+            if (!live) return;
+            let saved = [];
+            try { saved = JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '[]'); } catch { saved = []; }
+            const merged = [...waiting.map(p => p.id)].sort((a, b) => {
+                const ia = saved.indexOf(a), ib = saved.indexOf(b);
+                return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+            });
+            setQueueIds(merged);
         });
-        setQueueIds(merged);
+        return () => { live = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [queueVersion, QUEUE_KEY]);
 
     const persistQueue = async (ids) => {
         setQueueIds(ids);
         try {
-            await api('/pickups/reorder', { method: 'PATCH', body: { orders: ids.map((id, i) => ({ id, sort_order: i + 1 })) } });
+            await api('/pickups/reorder', { method: 'PATCH', body: { ids } });
             localStorage.removeItem(QUEUE_KEY);
             setQueueNotice('');
         } catch {
             localStorage.setItem(QUEUE_KEY, JSON.stringify(ids));
-            setQueueNotice('Endpoint reorder backend belum tersedia — urutan tersimpan di perangkat ini.');
+            setQueueNotice('Gagal sinkron urutan ke server — urutan tetap tersimpan di perangkat ini.');
         }
     };
 
@@ -349,14 +356,14 @@ function ReportPage({ showStatus }) {
     const rows = data ?? [];
     const totalKg = rows.reduce((s, p) => s + Number(p.total_gross ?? 0), 0);
     const totalNet = rows.reduce((s, p) => s + Number(p.total_net ?? 0), 0);
-    const totalFee = rows.reduce((s, p) => s + Number(p.total_fee ?? 0), 0);
+    // BE baru: potongan 20% melekat di harga beli katalog → total_fee tiket baru = 0;
+    // margin koperasi ada di selisih harga jual vs harga beli, bukan di timbangan.
 
     const download = () => {
         const lines = [
             'Laporan Penjemputan Selesai',
             `Total berat: ${totalKg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg`,
-            `Total bersih anggota: ${rp(totalNet)}`,
-            `Total fee koperasi: ${rp(totalFee)}`,
+            `Total diterima anggota: ${rp(totalNet)}`,
             `Jumlah tiket: ${rows.length}`,
             '',
             ...rows.map(p => `#${p.id} ${p.member?.name ?? '-'} — ${Number(p.total_gross ?? 0)} kg / ${rp(p.total_net)}`),
@@ -391,8 +398,8 @@ function ReportPage({ showStatus }) {
                 <Stat label="Bersih Anggota" value={rp(totalNet)}>
                     <p className="text-xs font-semibold text-muted-foreground">Total dikreditkan ke wallet anggota</p>
                 </Stat>
-                <Stat label="Fee Koperasi" value={rp(totalFee)}>
-                    <Progress value={totalKg ? Math.min(100, (totalFee / Math.max(1, totalKg)) * 100) : 0} green />
+                <Stat label="Tiket Ditangani" value={`${rows.length} tiket`}>
+                    <Progress value={100} green />
                 </Stat>
             </div>
 

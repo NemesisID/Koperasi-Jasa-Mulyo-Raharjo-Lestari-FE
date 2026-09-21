@@ -87,7 +87,8 @@ export default function PriceBoardPage() {
                                 </div>
                                 <div className="rounded-xl border border-border/60 bg-slate-50/70 p-3 text-center">
                                     <p className="text-[10px] font-bold uppercase text-muted-foreground">Belum Terpilah</p>
-                                    <strong className="mt-0.5 block text-sm font-extrabold break-words text-foreground md:text-base">{rp(item.price_unsorted)}</strong>
+                                    {/* Sinkron BE: yang diterima anggota unsorted = harga kotor − 20% (price_member_unsorted) */}
+                                    <strong className="mt-0.5 block text-sm font-extrabold break-words text-foreground md:text-base">{rp(Math.round(Number(item.price_unsorted || 0) * 0.8))}</strong>
                                 </div>
                             </div>
                         </article>
