@@ -59,7 +59,7 @@ function DashboardPage() {
         <div className="mx-auto max-w-5xl flex flex-col gap-6">
             <div className="grid gap-5 md:grid-cols-3">
                 <div className="md:col-span-2">
-                    <Stat label="TOTAL SAMPAH TERKUMPUL" value={`${Number(gross).toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg`}>
+                    <Stat label="TOTAL NILAI SETORAN" value={rp(gross)}>
                         <p className="text-xs font-semibold text-muted-foreground">Dari {rows.length} tiket penjemputan terakhir</p>
                     </Stat>
                 </div>
@@ -319,9 +319,9 @@ function PickupPage() {
 
                         <div className="flex flex-col items-end gap-3">
                             <div className="rounded-xl border border-border bg-slate-50/70 p-4">
-                                <p className="mb-1 text-xs font-semibold text-muted-foreground">Total Timbang</p>
-                                <strong className="text-lg font-bold text-primary">{Number(p.total_gross ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg</strong>
-                                <p className="text-[11px] text-muted-foreground">Bersih anggota: {rp(p.total_net)}</p>
+                                <p className="mb-1 text-xs font-semibold text-muted-foreground">Nilai Setoran</p>
+                                <strong className="text-lg font-bold text-primary">{rp(p.total_gross)}</strong>
+                                <p className="text-[11px] text-muted-foreground">Diterima anggota: {rp(p.total_net)}</p>
                             </div>
                             {p.member && p.status !== 'batal' && (
                                 p.status === 'menunggu' ? (
@@ -362,11 +362,11 @@ function ReportPage({ showStatus }) {
     const download = () => {
         const lines = [
             'Laporan Penjemputan Selesai',
-            `Total berat: ${totalKg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg`,
+            `Total nilai setoran: ${rp(totalKg)}`,
             `Total diterima anggota: ${rp(totalNet)}`,
             `Jumlah tiket: ${rows.length}`,
             '',
-            ...rows.map(p => `#${p.id} ${p.member?.name ?? '-'} — ${Number(p.total_gross ?? 0)} kg / ${rp(p.total_net)}`),
+            ...rows.map(p => `#${p.id} ${p.member?.name ?? '-'} — ${rp(p.total_gross)} / diterima ${rp(p.total_net)}`),
         ];
         const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
         const a = Object.assign(document.createElement('a'), { href: url, download: 'laporan-penjemputan.txt' });
@@ -392,7 +392,7 @@ function ReportPage({ showStatus }) {
             </section>
 
             <div className="grid gap-5 md:grid-cols-3">
-                <Stat featured label="Total Berat" value={`${totalKg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg`}>
+                <Stat featured label="Total Nilai Setoran" value={rp(totalKg)}>
                     <p className="text-xs text-blue-200">{rows.length} tiket selesai</p>
                 </Stat>
                 <Stat label="Bersih Anggota" value={rp(totalNet)}>
@@ -414,7 +414,7 @@ function ReportPage({ showStatus }) {
                                 <th className="px-6 py-3.5">Tiket</th>
                                 <th className="px-6 py-3.5">Anggota</th>
                                 <th className="px-6 py-3.5">Selesai</th>
-                                <th className="px-6 py-3.5">Berat (kg)</th>
+                                <th className="px-6 py-3.5">Nilai Setoran</th>
                                 <th className="px-6 py-3.5">Bersih Anggota</th>
                             </tr>
                         </thead>
@@ -430,7 +430,7 @@ function ReportPage({ showStatus }) {
                                     <td className="px-6 py-4 font-mono text-xs text-muted-foreground">#{p.id}</td>
                                     <td className="px-6 py-4 font-semibold text-foreground">{p.member?.name ?? '-'}</td>
                                     <td className="px-6 py-4 text-muted-foreground">{dfmt(p.completed_at)}</td>
-                                    <td className="px-6 py-4 font-bold text-foreground">{Number(p.total_gross ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 1 })}</td>
+                                    <td className="px-6 py-4 font-bold text-foreground">{rp(p.total_gross)}</td>
                                     <td className="px-6 py-4 font-bold text-primary">{rp(p.total_net)}</td>
                                 </tr>
                             ))}
@@ -440,7 +440,7 @@ function ReportPage({ showStatus }) {
 
                 <div className="flex items-center justify-between border-t-2 border-primary bg-[#eef3fc] px-6 py-4">
                     <strong className="text-sm font-bold text-foreground">Total Keseluruhan</strong>
-                    <strong className="text-xl font-extrabold text-primary">{totalKg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg</strong>
+                    <strong className="text-xl font-extrabold text-primary">{rp(totalKg)}</strong>
                 </div>
             </section>
         </div>
@@ -481,7 +481,7 @@ function HistoryPage() {
                 <Stat featured label="Tiket Ditangani" value={`${rows.length} tiket`}>
                     <p className="text-xs text-blue-100">Semua sudah selesai ditimbang</p>
                 </Stat>
-                <Stat label="Total Berat" value={`${totalKg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg`}>
+                <Stat label="Total Nilai Setoran" value={`${rp(totalKg)}`}>
                     <p className="text-xs font-semibold text-muted-foreground">Akumulasi seluruh penjemputan</p>
                 </Stat>
                 <Stat label="Bersih untuk Anggota" value={rp(totalNet)}>
@@ -499,7 +499,7 @@ function HistoryPage() {
                                 <span className="text-sm font-semibold text-foreground">{m.key}</span>
                                 <div className="flex items-center gap-4 text-xs">
                                     <span className="rounded-full bg-secondary px-3 py-1 font-semibold text-muted-foreground">{m.count} tiket</span>
-                                    <strong className="text-foreground">{m.kg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg</strong>
+                                    <strong className="text-foreground">{rp(m.kg)}</strong>
                                     <strong className="text-primary">{rp(m.net)}</strong>
                                 </div>
                             </div>
@@ -519,7 +519,7 @@ function HistoryPage() {
                                 <th className="px-6 py-3.5">Tanggal</th>
                                 <th className="px-6 py-3.5">Anggota</th>
                                 <th className="px-6 py-3.5">Lokasi</th>
-                                <th className="px-6 py-3.5">Berat (kg)</th>
+                                <th className="px-6 py-3.5">Nilai Setoran</th>
                                 <th className="px-6 py-3.5">Bersih Anggota</th>
                             </tr>
                         </thead>
@@ -540,7 +540,7 @@ function HistoryPage() {
                                     <td className="px-6 py-4 text-muted-foreground">
                                         {p.location_type === 'jemput_rumah' ? 'Jemput Rumah' : p.location_type === 'jemput_pasar' ? 'Jemput Pasar' : 'Gudang'}
                                     </td>
-                                    <td className="px-6 py-4 font-semibold text-foreground">{Number(p.total_gross ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 1 })}</td>
+                                    <td className="px-6 py-4 font-semibold text-foreground">{rp(p.total_gross)}</td>
                                     <td className="px-6 py-4 font-bold text-primary">{rp(p.total_net)}</td>
                                 </tr>
                             ))}
@@ -550,7 +550,7 @@ function HistoryPage() {
 
                 <div className="flex items-center justify-between border-t-2 border-primary bg-[#eef3fc] px-6 py-4">
                     <strong className="text-sm font-bold text-foreground">Total Keseluruhan</strong>
-                    <strong className="text-xl font-extrabold text-primary">{totalKg.toLocaleString('id-ID', { maximumFractionDigits: 1 })} kg</strong>
+                    <strong className="text-xl font-extrabold text-primary">{rp(totalKg)}</strong>
                 </div>
             </section>
         </div>

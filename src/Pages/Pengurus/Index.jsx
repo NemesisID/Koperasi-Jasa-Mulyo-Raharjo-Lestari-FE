@@ -1,4 +1,4 @@
-import { useState, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import { useAuth } from '@/lib/auth';
@@ -577,7 +577,12 @@ function ExpenseSummaryRow() {
 
 function TransactionPage({ type, title, desc }) {
     const { openForm } = usePopup();
-    const { data, meta, loading } = useApi(`/transactions?type=${type}&per_page=15`);
+    const { data, meta, loading, reload } = useApi(`/transactions?type=${type}&per_page=15`);
+    // Refresh otomatis saat ada popup sukses dari FormPopup mana pun.
+    useEffect(() => {
+        window.addEventListener('kjmrl:refresh', reload);
+        return () => window.removeEventListener('kjmrl:refresh', reload);
+    }, [reload]);
     const rows = data ?? [];
     const now = new Date();
     const start = `${now.getFullYear()}-01-01`;
@@ -1052,11 +1057,18 @@ export default function PengurusIndex() {
     const [form, setForm] = useState(null);
     const [status, setStatus] = useState('');
 
+    // Popup sukses = ada data berubah → umumkan ke halaman aktif agar
+    // daftar me-refresh sendiri (dulu harus reload manual).
+    const showStatus = (t) => {
+        setStatus(t);
+        if (t) window.dispatchEvent(new Event('kjmrl:refresh'));
+    };
+
     if (ready && !user) return <Navigate to="/" replace />;
     if (!ready) return null;
 
     return (
-        <PopupCtx.Provider value={{ openForm: setForm, showStatus: setStatus }}>
+        <PopupCtx.Provider value={{ openForm: setForm, showStatus }}>
             <Head title={pageTitles[page] || 'Dashboard Pengurus'} />
             <ManagerShell currentPage={page} setPage={setPage}>
                 <ManagerPages page={page} setPage={setPage} />

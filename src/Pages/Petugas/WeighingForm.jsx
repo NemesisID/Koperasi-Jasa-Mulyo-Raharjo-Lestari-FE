@@ -47,6 +47,8 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
     const [photoMeta, setPhotoMeta] = useState(null); // { time, lat, lng | null }
     // #10: id tiket yang upload fotonya gagal — menahan navigasi balik + tombol coba ulang.
     const [photoRetry, setPhotoRetry] = useState(null);
+    // Aliran step-2: setelah simpan, nota tampil dulu (WA/cetak); kembali ke daftar saat nota ditutup.
+    const [pendingBack, setPendingBack] = useState(false);
 
     const onPhotoChange = (e) => {
         const file = e.target.files?.[0];
@@ -234,6 +236,9 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
                 };
             });
 
+            // Foto gagal → tahan di form (pesan + retry terlihat), jangan tampilkan nota dulu.
+            if (photoFailed) return;
+
             setReceipt({
                 id: weighRes.data?.receipt_number || `NOTA-${String(pickupId).padStart(5, '0')}`,
                 member: `${targetMember.name} (${targetMember.member_code})`,
@@ -244,12 +249,10 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
                 net: weighRes.data?.net_earned ?? net,
             });
 
-            // Foto gagal → tahan di form (pesan + retry terlihat); jangan navigasi balik dulu.
-            if (photoFailed) return;
-
-            // Reset form (aliran step-2: kembali ke daftar pickup setelah timbangan tersimpan)
+            // Aliran step-2: tampilkan nota dulu — petugas butuh kirim WA / cetak.
+            // Kembali ke daftar terjadi di onClose nota (lihat pendingBack).
             if (onBack) {
-                onBack();
+                setPendingBack(true);
                 return;
             }
             setMemberSearch('');
@@ -540,7 +543,16 @@ export default function WeighingFormPage({ initialPickup = null, onBack = null }
                 </section>
             </form>
 
-            <ReceiptSuccessModal receipt={receipt} onClose={() => setReceipt(null)} />
+            <ReceiptSuccessModal
+                receipt={receipt}
+                onClose={() => {
+                    setReceipt(null);
+                    if (pendingBack) {
+                        setPendingBack(false);
+                        onBack?.();
+                    }
+                }}
+            />
         </div>
     );
 }

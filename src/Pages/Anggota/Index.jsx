@@ -117,6 +117,7 @@ function SummaryCard({ title, amount, note }) {
 // #15: label sumber mutasi ramah-baca — potongan saldo rutin masuk sini dari BE.
 const SOURCE_LABEL = {
     sampah: 'Setoran Sampah',
+    setor_sampah: 'Setoran Sampah',
     shu: 'SHU',
     penarikan: 'Penarikan',
     potongan_saldo: 'Potongan Tagihan Rutin',
