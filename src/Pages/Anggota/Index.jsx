@@ -9,6 +9,7 @@ import {
 import { MemberShell } from '@/Components/Koperasi/MemberShell';
 import ComplaintFormModal from '@/Components/Koperasi/ComplaintFormModal';
 import PriceBoardPage from './PriceBoard';
+import ReceiptsPage from './Receipts';
 import WalletAndShuPage from './WalletAndShu';
 import {
     DataPanel, FilterButton, MetricCard, PageTitle, Status
@@ -713,6 +714,8 @@ function MemberPages({ page, setPage, openForm }) {
             return <SukarelaPage />;
         case 'pengambilan-sampah':
             return <PickupHistoryPage openForm={openForm} />;
+        case 'struk':
+            return <ReceiptsPage />;
         case 'dompet-shu':
             return <WalletAndShuPage />;
         case 'harga-sampah':
@@ -733,6 +736,7 @@ const memberPageTitles = {
     'simpanan-wajib': 'Simpanan Wajib Anggota',
     'simpanan-sukarela': 'Simpanan Sukarela Anggota',
     'pengambilan-sampah': 'Riwayat Pengambilan Sampah',
+    'struk': 'Struk Pengambilan Sampah',
     'harga-sampah': 'Papan Harga Sampah',
     'laporan': 'Pusat Laporan Anggota',
     'laporan-shu': 'Laporan SHU Anggota',

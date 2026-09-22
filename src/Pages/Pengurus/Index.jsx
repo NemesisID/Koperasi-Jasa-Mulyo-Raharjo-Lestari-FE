@@ -12,11 +12,9 @@ import { api, useApi, download, rp, dfmt } from '@/lib/api';
 import ComplaintsDeskPage from './ComplaintsDesk';
 import TrashPricesPage from './TrashPrices';
 import UsersPage from './Users';
-import MembersPage from './Members';
 import WajibOverviewPage from './WajibOverview';
 import PickupMonitorPage from './PickupMonitor';
 import WithdrawalsPage from './Withdrawals';
-import PriceLogPage from './PriceLogPage';
 
 // ─── Popup context ────────────────────────────────────────────
 const PopupCtx = createContext({ openForm: () => {}, showStatus: () => {} });
@@ -995,8 +993,6 @@ function ManagerPages({ page, setPage }) {
             return <DashboardPage setPage={setPage} />;
         case 'harga-sampah':
             return <TrashPricesPage />;
-        case 'log-harga':
-            return <PriceLogPage />;
         case 'simpanan-pokok':
             return <SavingsByLabelPage label="POKOK" />;
         case 'simpanan-wajib':
@@ -1005,8 +1001,6 @@ function ManagerPages({ page, setPage }) {
             return <PickupMonitorPage />;
         case 'manajemen-user':
             return <UsersPage showStatus={showStatus} />;
-        case 'manajemen-anggota':
-            return <MembersPage />;
         case 'shu':
             return <ShuPage />;
         case 'penarikan':
@@ -1033,7 +1027,6 @@ function ManagerPages({ page, setPage }) {
 const pageTitles = {
     'dashboard': 'Dashboard Pengurus',
     'harga-sampah': 'Manajemen Harga Sampah',
-    'log-harga': 'Log Perubahan Harga',
     'simpanan-pokok': 'Simpanan Pokok',
     'simpanan-wajib': 'Simpanan Wajib',
     'shu': 'Sisa Hasil Usaha (SHU)',
@@ -1042,7 +1035,6 @@ const pageTitles = {
     'pengeluaran': 'Manajemen Pengeluaran',
     'penjemputan': 'Monitoring Pengambilan Sampah',
     'manajemen-user': 'Manajemen Pengguna',
-    'manajemen-anggota': 'Manajemen Anggota',
     'pengaduan': 'Helpdesk Pengaduan',
     'laporan': 'Pusat Laporan',
     'laporan-laba-rugi': 'Laporan Laba Rugi (P&L)',
