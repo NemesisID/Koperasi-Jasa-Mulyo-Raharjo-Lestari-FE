@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import {
-    Banknote, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, CirclePlus,
+    Banknote, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, CirclePlus,
     Home, Landmark, Leaf, MessageSquareWarning, Plus, Recycle, Store, TrendingDown, TrendingUp,
     UserRound, Wallet, WalletCards, X
 } from 'lucide-react';
@@ -493,8 +493,8 @@ function PickupHistoryPage({ openForm }) {
     const { data: complaints, reload: reloadComplaints } = useApi('/complaints');
     const [again, setAgain] = useState(null);
     const [reporting, setReporting] = useState(null);
+    const [notaPopup, setNotaPopup] = useState(null);
     const [done, setDone] = useState('');
-    const [expanded, setExpanded] = useState(null);
     const rows = data ?? [];
 
     const complaintMap = new Map((complaints ?? []).map(c => [c.pickup?.id, c]));
@@ -507,6 +507,25 @@ function PickupHistoryPage({ openForm }) {
     };
 
     const reloadAll = () => { reloadPickups(); reloadComplaints(); };
+
+    // Prepare nota data for popup
+    const buildNota = (p) => {
+        const items = (p.items ?? []).map(i => ({
+            name: i.category?.name || 'Sampah',
+            weight: i.weight_kg ?? i.unit_count ?? 0,
+            unit: i.category?.unit || 'kg',
+            total: Number(i.total_value || 0),
+        }));
+        return {
+            ...p,
+            _items: items,
+            _gross: Number(p.total_gross || 0),
+            _fee: Number(p.total_fee || 0),
+            _net: Number(p.total_net || 0),
+            _code: `NTR-${String(p.id).padStart(6, '0')}`,
+            _complaint: complaintMap.get(p.id),
+        };
+    };
 
     return (
         <div className="flex flex-col gap-6">
@@ -538,187 +557,138 @@ function PickupHistoryPage({ openForm }) {
                     <strong>Jadwal Tetap:</strong> jadwal pengambilan sampah ditetapkan tetap oleh koperasi dan tidak dapat diatur sendiri oleh anggota. Untuk kebutuhan di luar jadwal, gunakan tombol <strong>Minta Jemput</strong>.
                 </p>
             </div>
-
-            {/* Riwayat Pengambilan — card-based with inline Nota Digital */}
-            <section className="rounded-2xl border border-border/80 bg-card shadow-xs">
-                <div className="flex items-center justify-between border-b border-border/60 px-5 py-4">
-                    <h2 className="text-lg font-bold text-foreground">Riwayat Pengambilan</h2>
-                    <span className="text-xs font-medium text-muted-foreground">{rows.length} pengambilan</span>
-                </div>
-
-                {loading && (
-                    <div className="px-6 py-10 text-center text-sm text-muted-foreground">Memuat data…</div>
-                )}
-                {!loading && rows.length === 0 && (
-                    <div className="px-6 py-10 text-center text-sm text-muted-foreground">
-                        {error ? 'Gagal memuat data.' : 'Belum ada pengambilan sampah.'}
-                    </div>
-                )}
-
-                <div className="divide-y divide-border/60">
-                    {rows.map(p => {
-                        const isOpen = expanded === p.id;
-                        const isSelesai = p.status === 'selesai';
-                        const items = (p.items ?? []).map(i => ({
-                            name: i.category?.name || 'Sampah',
-                            weight: i.weight_kg ?? i.unit_count ?? 0,
-                            unit: i.category?.unit || 'kg',
-                            total: Number(i.total_value || 0),
-                        }));
-                        const gross = Number(p.total_gross || 0);
-                        const fee = Number(p.total_fee || 0);
-                        const net = Number(p.total_net || 0);
-                        const complaint = complaintMap.get(p.id);
-                        const receiptCode = `NTR-${String(p.id).padStart(6, '0')}`;
-
-                        return (
-                            <div key={p.id} className="transition-colors">
-                                {/* Main row */}
-                                <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                                    <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                                        <span className={cn(
-                                            'flex size-10 shrink-0 items-center justify-center rounded-xl',
-                                            isSelesai ? 'bg-emerald-100 text-emerald-600' : p.status === 'batal' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'
-                                        )}>
-                                            <Recycle size={18} />
-                                        </span>
-                                        <div className="min-w-0">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <span className="text-sm font-semibold text-foreground">{locLabel(p.location_type)}</span>
-                                                <Status kind={isSelesai ? 'success' : p.status === 'batal' ? 'danger' : 'waiting'}>{p.status}</Status>
-                                                {isSelesai && (
-                                                    <span className="font-mono text-[10px] font-bold text-primary/70">{receiptCode}</span>
-                                                )}
-                                            </div>
-                                            <p className="mt-0.5 text-xs text-muted-foreground">
-                                                {dfmt(p.completed_at ?? p.scheduled_at)}
-                                                {p.officer?.name ? ` · Petugas: ${p.officer.name}` : ''}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-2.5 shrink-0">
-                                        <div className="text-right">
-                                            <p className="flex items-center justify-end gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                <Wallet size={11} /> Diterima
-                                            </p>
-                                            <strong className={cn('text-base font-extrabold', net > 0 ? 'text-emerald-700' : 'text-muted-foreground')}>
-                                                {net > 0 ? rp(net) : '-'}
-                                            </strong>
-                                        </div>
-
-                                        {/* Action buttons */}
-                                        {isSelesai && isSameDay(p.completed_at ?? p.scheduled_at) && (
-                                            <button onClick={() => setAgain(p)}
-                                                className="h-8 rounded-xl bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90">
-                                                Jemput Ulang
-                                            </button>
-                                        )}
-
-                                        {/* Nota Digital expand toggle — only for completed pickups */}
-                                        {isSelesai && (
-                                            <button
-                                                onClick={() => setExpanded(isOpen ? null : p.id)}
-                                                aria-expanded={isOpen}
-                                                className={cn(
-                                                    'flex h-8 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition-all',
-                                                    isOpen
-                                                        ? 'border-primary bg-primary text-white'
-                                                        : 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                                )}
-                                            >
-                                                <Recycle size={13} />
-                                                <span>Nota</span>
-                                                {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Expandable Nota Digital Detail */}
-                                {isOpen && isSelesai && (
-                                    <div className="border-t border-border/40 bg-slate-50/60 px-5 py-5 animate-in fade-in-50 slide-in-from-top-2 duration-200">
-                                        {/* Nota header */}
-                                        <div className="flex items-center gap-3 mb-4">
-                                            <span className="flex size-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
-                                                <Recycle size={16} />
-                                            </span>
-                                            <div>
-                                                <p className="font-mono text-xs font-bold text-primary">{receiptCode}</p>
-                                                <p className="text-[11px] text-muted-foreground">
-                                                    {dfmt(p.completed_at ?? p.scheduled_at)} ·
-                                                    {p.location_type === 'jemput_rumah' ? ' Dijemput di Rumah' : p.location_type === 'jemput_pasar' ? ' Dijemput di Pasar' : ' Diantar ke Gudang'}
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {/* Items table */}
-                                        {items.length > 0 ? (
-                                            <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
-                                                <table className="w-full text-left text-xs">
-                                                    <thead className="bg-[#eef3fc] text-[10px] font-bold uppercase tracking-wider text-slate-700">
-                                                        <tr>
-                                                            <th className="px-4 py-2.5">Jenis Sampah</th>
-                                                            <th className="px-4 py-2.5 text-right">Berat / Jumlah</th>
-                                                            <th className="px-4 py-2.5 text-right">Nilai</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-border/60">
-                                                        {items.map((item, i) => (
-                                                            <tr key={i}>
-                                                                <td className="px-4 py-2.5 font-semibold text-foreground">{item.name}</td>
-                                                                <td className="px-4 py-2.5 text-right text-muted-foreground">{item.weight} {item.unit}</td>
-                                                                <td className="px-4 py-2.5 text-right font-bold text-foreground">{rp(item.total)}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        ) : (
-                                            <p className="text-xs text-muted-foreground italic mb-3">
-                                                {p.status === 'menunggu_timbang' ? 'Menunggu penimbangan oleh petugas' : 'Tanpa rincian item'}
-                                            </p>
-                                        )}
-
-                                        {/* Summary: gross, fee, net */}
-                                        <div className="mt-4 flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex justify-between gap-6 text-xs text-muted-foreground">
-                                                    <span>Nilai kotor {rp(gross)}</span>
-                                                    <span className="text-rose-600">Potongan 20% −{rp(fee)}</span>
-                                                </div>
-                                                <div className="flex justify-between gap-6 text-sm">
-                                                    <strong className="text-foreground">Saldo masuk</strong>
-                                                    <strong className="text-emerald-700">{rp(net)}</strong>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                {complaint ? (
-                                                    <span className={cn(
-                                                        'inline-flex items-center gap-1.5 self-start rounded-full px-3.5 py-1.5 text-xs font-bold sm:self-auto',
-                                                        complaintStatus(complaint.status).cls
-                                                    )}>
-                                                        <MessageSquareWarning size={13} />
-                                                        Komplain #{complaint.id} · {complaintStatus(complaint.status).label}
-                                                    </span>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => setReporting(p)}
-                                                        className="flex h-9 items-center gap-2 self-start rounded-xl border border-primary/40 bg-card px-3.5 text-xs font-semibold text-primary transition-all hover:bg-primary hover:text-white sm:self-auto"
-                                                    >
-                                                        <MessageSquareWarning size={14} />
-                                                        <span>Ajukan Komplain</span>
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
+            <DataPanel
+                title="Riwayat Pengambilan"
+                headers={['Tanggal', 'Lokasi', 'Status', 'Anda Terima', 'Aksi']}
+                rows={loading
+                    ? [[<span key="l" className="text-muted-foreground">Memuat data…</span>, '', '', '', '']]
+                    : rows.length === 0
+                        ? [[<span key="e" className="text-muted-foreground">{error ? 'Gagal memuat data.' : 'Belum ada pengambilan sampah.'}</span>, '', '', '', '']]
+                        : rows.map(p => [
+                            <span key="d" className="text-muted-foreground">{dfmt(p.completed_at ?? p.scheduled_at)}</span>,
+                            <span key="loc" className="font-semibold">{locLabel(p.location_type)}</span>,
+                            <Status key="s" kind={p.status === 'selesai' ? 'success' : p.status === 'batal' ? 'danger' : 'waiting'}>{p.status}</Status>,
+                            <strong key="net" className={cn('font-bold', Number(p.total_net) > 0 ? 'text-emerald-700' : 'text-muted-foreground')}>{Number(p.total_net) > 0 ? rp(p.total_net) : '-'}</strong>,
+                            <div key="a" className="flex justify-end gap-1.5">
+                                {p.status === 'selesai' && isSameDay(p.completed_at ?? p.scheduled_at) && (
+                                    <button onClick={() => setAgain(p)}
+                                        className="h-8 rounded-xl bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90">
+                                        Jemput Ulang
+                                    </button>
                                 )}
+                                {p.status === 'selesai' && (
+                                    <button onClick={() => setNotaPopup(buildNota(p))}
+                                        className="flex h-8 items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-100">
+                                        <Recycle size={13} />
+                                        Lihat Nota
+                                    </button>
+                                )}
+                                {p.status !== 'selesai' && <span className="text-xs text-muted-foreground">-</span>}
                             </div>
-                        );
-                    })}
-                </div>
-            </section>
+                        ])}
+                footer={`Menampilkan ${rows.length} pengambilan`}
+            />
+
+            {/* ── Nota Digital Popup Modal ── */}
+            {notaPopup && (
+                <Modal open onClose={() => setNotaPopup(null)}>
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-border/60 bg-accent/60 px-6 py-4">
+                        <div className="flex items-center gap-3">
+                            <span className="flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+                                <Recycle size={20} />
+                            </span>
+                            <div>
+                                <h2 className="text-base font-bold text-primary">Nota Digital</h2>
+                                <p className="font-mono text-xs font-semibold text-foreground/70">{notaPopup._code}</p>
+                            </div>
+                        </div>
+                        <button type="button" onClick={() => setNotaPopup(null)} aria-label="Tutup"
+                            className="rounded-lg p-1.5 text-muted-foreground hover:bg-black/5 hover:text-foreground transition-colors">
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    {/* Body */}
+                    <div className="flex flex-col gap-5 p-6 bg-card max-h-[70vh] overflow-y-auto">
+                        {/* Info row */}
+                        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
+                            <span><strong className="text-foreground">Tanggal:</strong> {dfmt(notaPopup.completed_at ?? notaPopup.scheduled_at)}</span>
+                            <span><strong className="text-foreground">Lokasi:</strong> {notaPopup.location_type === 'jemput_rumah' ? 'Dijemput di Rumah' : notaPopup.location_type === 'jemput_pasar' ? 'Dijemput di Pasar' : 'Diantar ke Gudang'}</span>
+                            {notaPopup.officer?.name && <span><strong className="text-foreground">Petugas:</strong> {notaPopup.officer.name}</span>}
+                        </div>
+
+                        {/* Items table */}
+                        {notaPopup._items.length > 0 ? (
+                            <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
+                                <table className="w-full text-left text-xs">
+                                    <thead className="bg-[#eef3fc] text-[10px] font-bold uppercase tracking-wider text-slate-700">
+                                        <tr>
+                                            <th className="px-4 py-2.5">Jenis Sampah</th>
+                                            <th className="px-4 py-2.5 text-right">Berat / Jumlah</th>
+                                            <th className="px-4 py-2.5 text-right">Nilai</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/60">
+                                        {notaPopup._items.map((item, i) => (
+                                            <tr key={i} className="hover:bg-secondary/30 transition-colors">
+                                                <td className="px-4 py-2.5 font-semibold text-foreground">{item.name}</td>
+                                                <td className="px-4 py-2.5 text-right text-muted-foreground">{item.weight} {item.unit}</td>
+                                                <td className="px-4 py-2.5 text-right font-bold text-foreground">{rp(item.total)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-muted-foreground italic">Tanpa rincian item</p>
+                        )}
+
+                        {/* Summary: gross → fee → net */}
+                        <div className="rounded-xl border border-border/60 bg-slate-50/80 p-4">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>Nilai Kotor</span>
+                                <span className="font-semibold text-foreground">{rp(notaPopup._gross)}</span>
+                            </div>
+                            <div className="mt-1.5 flex items-center justify-between text-xs">
+                                <span className="text-rose-600">Potongan 20%</span>
+                                <span className="font-semibold text-rose-600">−{rp(notaPopup._fee)}</span>
+                            </div>
+                            <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
+                                <strong className="text-sm text-foreground">Saldo Masuk ke Wallet</strong>
+                                <strong className="text-lg font-extrabold text-emerald-700">{rp(notaPopup._net)}</strong>
+                            </div>
+                        </div>
+
+                        {/* Complaint status / button */}
+                        <div className="flex items-center justify-between">
+                            {notaPopup._complaint ? (
+                                <span className={cn(
+                                    'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold',
+                                    complaintStatus(notaPopup._complaint.status).cls
+                                )}>
+                                    <MessageSquareWarning size={13} />
+                                    Komplain #{notaPopup._complaint.id} · {complaintStatus(notaPopup._complaint.status).label}
+                                </span>
+                            ) : (
+                                <button
+                                    onClick={() => { setReporting(notaPopup); setNotaPopup(null); }}
+                                    className="flex h-10 items-center gap-2 rounded-xl border border-primary/40 bg-card px-4 text-xs font-semibold text-primary transition-all hover:bg-primary hover:text-white"
+                                >
+                                    <MessageSquareWarning size={15} />
+                                    <span>Ajukan Komplain</span>
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setNotaPopup(null)}
+                                className="h-10 rounded-xl border border-border bg-card px-5 text-xs font-semibold text-foreground/80 hover:bg-secondary transition-all"
+                            >
+                                Tutup
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
 
             {again && (
                 <RequestAgainModal
