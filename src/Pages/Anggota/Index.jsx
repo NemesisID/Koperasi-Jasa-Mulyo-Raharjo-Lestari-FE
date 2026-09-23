@@ -508,21 +508,45 @@ function PickupHistoryPage({ openForm }) {
 
     const reloadAll = () => { reloadPickups(); reloadComplaints(); };
 
-    // Prepare nota data for popup
+    // Prepare nota data for popup from dedicated Receipt object or items fallback
     const buildNota = (p) => {
-        const items = (p.items ?? []).map(i => ({
-            name: i.category?.name || 'Sampah',
-            weight: i.weight_kg ?? i.unit_count ?? 0,
-            unit: i.category?.unit || 'kg',
-            total: Number(i.total_value || 0),
-        }));
+        const rc = p.receipt;
+        // Jika data nota dari tabel receipts tersedia, gunakan langsung snapshot frozen tersebut
+        let items = [];
+        if (rc && Array.isArray(rc.items) && rc.items.length > 0) {
+            items = rc.items.map(i => ({
+                name: i.name || 'Sampah',
+                weight: Number(i.weight ?? 0),
+                unit: i.unit || 'kg',
+                price: Number(i.price ?? i.price_per_unit ?? 0),
+                total: Number(i.total ?? i.total_value ?? 0),
+            }));
+        } else {
+            items = (p.items ?? []).map(i => {
+                const weight = Number(i.weight_kg ?? i.unit_count ?? 0);
+                const total = Number(i.total_value || 0);
+                const savedPrice = i.price_per_unit != null ? Number(i.price_per_unit) : null;
+                const price = (savedPrice && savedPrice > 0) ? savedPrice : (weight > 0 ? Math.round(total / weight) : 0);
+                return {
+                    name: i.category?.name || 'Sampah',
+                    weight,
+                    unit: i.category?.unit || 'kg',
+                    price,
+                    total,
+                };
+            });
+        }
+
         return {
             ...p,
             _items: items,
-            _gross: Number(p.total_gross || 0),
-            _fee: Number(p.total_fee || 0),
-            _net: Number(p.total_net || 0),
-            _code: `NTR-${String(p.id).padStart(6, '0')}`,
+            _gross: Number(rc?.total_gross ?? p.total_gross ?? 0),
+            _fee: Number(rc?.total_fee ?? p.total_fee ?? 0),
+            _net: Number(rc?.total_net ?? p.total_net ?? 0),
+            _code: rc?.receipt_number || `NTR-${String(p.id).padStart(6, '0')}`,
+            _officerName: rc?.officer_name || p.officer?.name,
+            _locationLabel: rc?.location_label,
+            _issuedAt: rc?.issued_at || p.completed_at || p.scheduled_at,
             _complaint: complaintMap.get(p.id),
         };
     };
@@ -613,9 +637,11 @@ function PickupHistoryPage({ openForm }) {
                     <div className="flex flex-col gap-5 p-6 bg-card max-h-[70vh] overflow-y-auto">
                         {/* Info row */}
                         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
-                            <span><strong className="text-foreground">Tanggal:</strong> {dfmt(notaPopup.completed_at ?? notaPopup.scheduled_at)}</span>
-                            <span><strong className="text-foreground">Lokasi:</strong> {notaPopup.location_type === 'jemput_rumah' ? 'Dijemput di Rumah' : notaPopup.location_type === 'jemput_pasar' ? 'Dijemput di Pasar' : 'Diantar ke Gudang'}</span>
-                            {notaPopup.officer?.name && <span><strong className="text-foreground">Petugas:</strong> {notaPopup.officer.name}</span>}
+                            <span><strong className="text-foreground">Tanggal:</strong> {dfmt(notaPopup._issuedAt ?? notaPopup.completed_at ?? notaPopup.scheduled_at)}</span>
+                            <span><strong className="text-foreground">Lokasi:</strong> {notaPopup._locationLabel || (notaPopup.location_type === 'jemput_rumah' ? 'Dijemput di Rumah' : notaPopup.location_type === 'jemput_pasar' ? 'Dijemput di Pasar' : 'Diantar ke Gudang')}</span>
+                            {(notaPopup._officerName || notaPopup.officer?.name) && (
+                                <span><strong className="text-foreground">Petugas:</strong> {notaPopup._officerName || notaPopup.officer?.name}</span>
+                            )}
                         </div>
 
                         {/* Items table */}
@@ -626,6 +652,7 @@ function PickupHistoryPage({ openForm }) {
                                         <tr>
                                             <th className="px-4 py-2.5">Jenis Sampah</th>
                                             <th className="px-4 py-2.5 text-right">Berat / Jumlah</th>
+                                            <th className="px-4 py-2.5 text-right">Harga/Unit</th>
                                             <th className="px-4 py-2.5 text-right">Nilai</th>
                                         </tr>
                                     </thead>
@@ -634,6 +661,7 @@ function PickupHistoryPage({ openForm }) {
                                             <tr key={i} className="hover:bg-secondary/30 transition-colors">
                                                 <td className="px-4 py-2.5 font-semibold text-foreground">{item.name}</td>
                                                 <td className="px-4 py-2.5 text-right text-muted-foreground">{item.weight} {item.unit}</td>
+                                                <td className="px-4 py-2.5 text-right text-muted-foreground">{rp(item.price)}/{item.unit}</td>
                                                 <td className="px-4 py-2.5 text-right font-bold text-foreground">{rp(item.total)}</td>
                                             </tr>
                                         ))}
@@ -643,17 +671,22 @@ function PickupHistoryPage({ openForm }) {
                         ) : (
                             <p className="text-xs text-muted-foreground italic">Tanpa rincian item</p>
                         )}
+                        <p className="text-[10px] text-muted-foreground -mt-2">
+                            * Data nota ini tersimpan permanen (frozen) di database saat transaksi selesai dan terisolasi dari perubahan harga sampah.
+                        </p>
 
                         {/* Summary: gross → fee → net */}
                         <div className="rounded-xl border border-border/60 bg-slate-50/80 p-4">
                             <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>Nilai Kotor</span>
+                                <span>Nilai Setoran</span>
                                 <span className="font-semibold text-foreground">{rp(notaPopup._gross)}</span>
                             </div>
-                            <div className="mt-1.5 flex items-center justify-between text-xs">
-                                <span className="text-rose-600">Potongan 20%</span>
-                                <span className="font-semibold text-rose-600">−{rp(notaPopup._fee)}</span>
-                            </div>
+                            {notaPopup._fee > 0 && (
+                                <div className="mt-1.5 flex items-center justify-between text-xs">
+                                    <span className="text-rose-600">Potongan 20%</span>
+                                    <span className="font-semibold text-rose-600">−{rp(notaPopup._fee)}</span>
+                                </div>
+                            )}
                             <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
                                 <strong className="text-sm text-foreground">Saldo Masuk ke Wallet</strong>
                                 <strong className="text-lg font-extrabold text-emerald-700">{rp(notaPopup._net)}</strong>
