@@ -117,11 +117,7 @@ export function MemberShell({ children, currentPage, setPage }) {
                     <span>Riwayat Pengambilan</span>
                 </button>
 
-                {/* Struk Pengambilan Sampah */}
-                <button onClick={() => nav('struk')} className={navBtnCls(is('struk'))}>
-                    <Tags size={18} />
-                    <span>Struk Pengambilan</span>
-                </button>
+
 
                 {/* Dompet & SHU (aktifkan halaman yatim WalletAndShu) */}
                 <button onClick={() => nav('dompet-shu')} className={navBtnCls(is('dompet-shu'))}>

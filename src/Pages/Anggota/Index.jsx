@@ -2,14 +2,13 @@ import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import {
-    Banknote, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, CirclePlus,
-    Home, Landmark, Leaf, Plus, Store, TrendingDown, TrendingUp,
-    UserRound, WalletCards, X
+    Banknote, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, CirclePlus,
+    Home, Landmark, Leaf, MessageSquareWarning, Plus, Recycle, Store, TrendingDown, TrendingUp,
+    UserRound, Wallet, WalletCards, X
 } from 'lucide-react';
 import { MemberShell } from '@/Components/Koperasi/MemberShell';
 import ComplaintFormModal from '@/Components/Koperasi/ComplaintFormModal';
 import PriceBoardPage from './PriceBoard';
-import ReceiptsPage from './Receipts';
 import WalletAndShuPage from './WalletAndShu';
 import {
     DataPanel, FilterButton, MetricCard, PageTitle, Status
@@ -17,6 +16,7 @@ import {
 import { FormPopup, Modal, StatusPopup } from '@/Components/Koperasi/Popups';
 import { useApi, api, rp, dfmt } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { complaintStatus } from '@/lib/complaint';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
@@ -489,11 +489,15 @@ function RequestAgainModal({ user, onClose, onDone }) {
 
 function PickupHistoryPage({ openForm }) {
     const { user } = useAuth();
-    const { data, loading, error } = useApi('/pickups?per_page=50');
+    const { data, loading, error, reload: reloadPickups } = useApi('/pickups?per_page=50');
+    const { data: complaints, reload: reloadComplaints } = useApi('/complaints');
     const [again, setAgain] = useState(null);
     const [reporting, setReporting] = useState(null);
     const [done, setDone] = useState('');
+    const [expanded, setExpanded] = useState(null);
     const rows = data ?? [];
+
+    const complaintMap = new Map((complaints ?? []).map(c => [c.pickup?.id, c]));
 
     const isSameDay = (iso) => {
         if (!iso) return false;
@@ -502,11 +506,13 @@ function PickupHistoryPage({ openForm }) {
         return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
     };
 
+    const reloadAll = () => { reloadPickups(); reloadComplaints(); };
+
     return (
         <div className="flex flex-col gap-6">
             <PageTitle
                 title="Riwayat Pengambilan Sampah"
-                description="Riwayat sampah Anda yang diambil petugas. Minta jemput untuk jadwal tertentu."
+                description="Riwayat sampah Anda yang diambil petugas beserta nota digital. Minta jemput untuk jadwal tertentu."
                 action={
                     <div className="flex gap-2">
                         <button
@@ -529,39 +535,191 @@ function PickupHistoryPage({ openForm }) {
             <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
                 <CalendarDays size={16} className="mt-0.5 shrink-0 text-emerald-700" />
                 <p className="text-xs leading-relaxed text-emerald-900">
-                    <strong>Jadwal pakem:</strong> jadwal pengambilan sampah ditetapkan tetap oleh koperasi dan tidak dapat diatur sendiri oleh anggota. Untuk kebutuhan di luar jadwal, gunakan tombol <strong>Minta Jemput</strong>.
+                    <strong>Jadwal Tetap:</strong> jadwal pengambilan sampah ditetapkan tetap oleh koperasi dan tidak dapat diatur sendiri oleh anggota. Untuk kebutuhan di luar jadwal, gunakan tombol <strong>Minta Jemput</strong>.
                 </p>
             </div>
-            <DataPanel
-                title="Riwayat Pengambilan"
-                headers={['Tanggal', 'Lokasi', 'Status', 'Anda Terima', 'Aksi']}
-                rows={loading
-                    ? [[<span key="l" className="text-muted-foreground">Memuat data…</span>, '', '', '', '']]
-                    : rows.length === 0
-                        ? [[<span key="e" className="text-muted-foreground">{error ? 'Gagal memuat data.' : 'Belum ada pengambilan sampah.'}</span>, '', '', '', '']]
-                        : rows.map(p => [
-                            <span key="d" className="text-muted-foreground">{dfmt(p.completed_at ?? p.scheduled_at)}</span>,
-                            <span key="loc" className="font-semibold">{locLabel(p.location_type)}</span>,
-                            <Status key="s" kind={p.status === 'selesai' ? 'success' : p.status === 'batal' ? 'danger' : 'waiting'}>{p.status}</Status>,
-                            <strong key="net" className={cn('font-bold', Number(p.total_net) > 0 ? 'text-emerald-700' : 'text-muted-foreground')}>{Number(p.total_net) > 0 ? rp(p.total_net) : '-'}</strong>,
-                            <div key="a" className="flex justify-end gap-1.5">
-                                {p.status === 'selesai' && isSameDay(p.completed_at ?? p.scheduled_at) && (
-                                    <button onClick={() => setAgain(p)}
-                                        className="h-8 rounded-xl bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90">
-                                        Jemput Ulang
-                                    </button>
+
+            {/* Riwayat Pengambilan — card-based with inline Nota Digital */}
+            <section className="rounded-2xl border border-border/80 bg-card shadow-xs">
+                <div className="flex items-center justify-between border-b border-border/60 px-5 py-4">
+                    <h2 className="text-lg font-bold text-foreground">Riwayat Pengambilan</h2>
+                    <span className="text-xs font-medium text-muted-foreground">{rows.length} pengambilan</span>
+                </div>
+
+                {loading && (
+                    <div className="px-6 py-10 text-center text-sm text-muted-foreground">Memuat data…</div>
+                )}
+                {!loading && rows.length === 0 && (
+                    <div className="px-6 py-10 text-center text-sm text-muted-foreground">
+                        {error ? 'Gagal memuat data.' : 'Belum ada pengambilan sampah.'}
+                    </div>
+                )}
+
+                <div className="divide-y divide-border/60">
+                    {rows.map(p => {
+                        const isOpen = expanded === p.id;
+                        const isSelesai = p.status === 'selesai';
+                        const items = (p.items ?? []).map(i => ({
+                            name: i.category?.name || 'Sampah',
+                            weight: i.weight_kg ?? i.unit_count ?? 0,
+                            unit: i.category?.unit || 'kg',
+                            total: Number(i.total_value || 0),
+                        }));
+                        const gross = Number(p.total_gross || 0);
+                        const fee = Number(p.total_fee || 0);
+                        const net = Number(p.total_net || 0);
+                        const complaint = complaintMap.get(p.id);
+                        const receiptCode = `NTR-${String(p.id).padStart(6, '0')}`;
+
+                        return (
+                            <div key={p.id} className="transition-colors">
+                                {/* Main row */}
+                                <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                                        <span className={cn(
+                                            'flex size-10 shrink-0 items-center justify-center rounded-xl',
+                                            isSelesai ? 'bg-emerald-100 text-emerald-600' : p.status === 'batal' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'
+                                        )}>
+                                            <Recycle size={18} />
+                                        </span>
+                                        <div className="min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="text-sm font-semibold text-foreground">{locLabel(p.location_type)}</span>
+                                                <Status kind={isSelesai ? 'success' : p.status === 'batal' ? 'danger' : 'waiting'}>{p.status}</Status>
+                                                {isSelesai && (
+                                                    <span className="font-mono text-[10px] font-bold text-primary/70">{receiptCode}</span>
+                                                )}
+                                            </div>
+                                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                                {dfmt(p.completed_at ?? p.scheduled_at)}
+                                                {p.officer?.name ? ` · Petugas: ${p.officer.name}` : ''}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2.5 shrink-0">
+                                        <div className="text-right">
+                                            <p className="flex items-center justify-end gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                <Wallet size={11} /> Diterima
+                                            </p>
+                                            <strong className={cn('text-base font-extrabold', net > 0 ? 'text-emerald-700' : 'text-muted-foreground')}>
+                                                {net > 0 ? rp(net) : '-'}
+                                            </strong>
+                                        </div>
+
+                                        {/* Action buttons */}
+                                        {isSelesai && isSameDay(p.completed_at ?? p.scheduled_at) && (
+                                            <button onClick={() => setAgain(p)}
+                                                className="h-8 rounded-xl bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90">
+                                                Jemput Ulang
+                                            </button>
+                                        )}
+
+                                        {/* Nota Digital expand toggle — only for completed pickups */}
+                                        {isSelesai && (
+                                            <button
+                                                onClick={() => setExpanded(isOpen ? null : p.id)}
+                                                aria-expanded={isOpen}
+                                                className={cn(
+                                                    'flex h-8 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition-all',
+                                                    isOpen
+                                                        ? 'border-primary bg-primary text-white'
+                                                        : 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                                )}
+                                            >
+                                                <Recycle size={13} />
+                                                <span>Nota</span>
+                                                {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Expandable Nota Digital Detail */}
+                                {isOpen && isSelesai && (
+                                    <div className="border-t border-border/40 bg-slate-50/60 px-5 py-5 animate-in fade-in-50 slide-in-from-top-2 duration-200">
+                                        {/* Nota header */}
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <span className="flex size-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+                                                <Recycle size={16} />
+                                            </span>
+                                            <div>
+                                                <p className="font-mono text-xs font-bold text-primary">{receiptCode}</p>
+                                                <p className="text-[11px] text-muted-foreground">
+                                                    {dfmt(p.completed_at ?? p.scheduled_at)} ·
+                                                    {p.location_type === 'jemput_rumah' ? ' Dijemput di Rumah' : p.location_type === 'jemput_pasar' ? ' Dijemput di Pasar' : ' Diantar ke Gudang'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Items table */}
+                                        {items.length > 0 ? (
+                                            <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
+                                                <table className="w-full text-left text-xs">
+                                                    <thead className="bg-[#eef3fc] text-[10px] font-bold uppercase tracking-wider text-slate-700">
+                                                        <tr>
+                                                            <th className="px-4 py-2.5">Jenis Sampah</th>
+                                                            <th className="px-4 py-2.5 text-right">Berat / Jumlah</th>
+                                                            <th className="px-4 py-2.5 text-right">Nilai</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-border/60">
+                                                        {items.map((item, i) => (
+                                                            <tr key={i}>
+                                                                <td className="px-4 py-2.5 font-semibold text-foreground">{item.name}</td>
+                                                                <td className="px-4 py-2.5 text-right text-muted-foreground">{item.weight} {item.unit}</td>
+                                                                <td className="px-4 py-2.5 text-right font-bold text-foreground">{rp(item.total)}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-muted-foreground italic mb-3">
+                                                {p.status === 'menunggu_timbang' ? 'Menunggu penimbangan oleh petugas' : 'Tanpa rincian item'}
+                                            </p>
+                                        )}
+
+                                        {/* Summary: gross, fee, net */}
+                                        <div className="mt-4 flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex justify-between gap-6 text-xs text-muted-foreground">
+                                                    <span>Nilai kotor {rp(gross)}</span>
+                                                    <span className="text-rose-600">Potongan 20% −{rp(fee)}</span>
+                                                </div>
+                                                <div className="flex justify-between gap-6 text-sm">
+                                                    <strong className="text-foreground">Saldo masuk</strong>
+                                                    <strong className="text-emerald-700">{rp(net)}</strong>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {complaint ? (
+                                                    <span className={cn(
+                                                        'inline-flex items-center gap-1.5 self-start rounded-full px-3.5 py-1.5 text-xs font-bold sm:self-auto',
+                                                        complaintStatus(complaint.status).cls
+                                                    )}>
+                                                        <MessageSquareWarning size={13} />
+                                                        Komplain #{complaint.id} · {complaintStatus(complaint.status).label}
+                                                    </span>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => setReporting(p)}
+                                                        className="flex h-9 items-center gap-2 self-start rounded-xl border border-primary/40 bg-card px-3.5 text-xs font-semibold text-primary transition-all hover:bg-primary hover:text-white sm:self-auto"
+                                                    >
+                                                        <MessageSquareWarning size={14} />
+                                                        <span>Ajukan Komplain</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
                                 )}
-                                {p.status === 'selesai' && (
-                                    <button onClick={() => setReporting(p)}
-                                        className="h-8 rounded-xl border border-primary px-3 text-xs font-semibold text-primary hover:bg-primary hover:text-white">
-                                        Laporkan
-                                    </button>
-                                )}
-                                {p.status !== 'selesai' && <span className="text-xs text-muted-foreground">-</span>}
                             </div>
-                        ])}
-                footer={`Menampilkan ${rows.length} pengambilan`}
-            />
+                        );
+                    })}
+                </div>
+            </section>
+
             {again && (
                 <RequestAgainModal
                     user={user}
@@ -577,7 +735,7 @@ function PickupHistoryPage({ openForm }) {
                         itemsSummary: `${locLabel(reporting.location_type)} · petugas: ${reporting.officer?.name ?? '-'}`,
                     }}
                     onClose={() => setReporting(null)}
-                    onSuccess={msg => { setReporting(null); setDone(msg || 'Laporan berhasil dikirim ke pengurus.'); }}
+                    onSuccess={() => { setReporting(null); setDone('Komplain Berhasil Dikirim'); reloadAll(); }}
                 />
             )}
             <StatusPopup open={Boolean(done)} title={done} onClose={() => setDone('')} />
@@ -714,8 +872,7 @@ function MemberPages({ page, setPage, openForm }) {
             return <SukarelaPage />;
         case 'pengambilan-sampah':
             return <PickupHistoryPage openForm={openForm} />;
-        case 'struk':
-            return <ReceiptsPage />;
+
         case 'dompet-shu':
             return <WalletAndShuPage />;
         case 'harga-sampah':
@@ -736,7 +893,7 @@ const memberPageTitles = {
     'simpanan-wajib': 'Simpanan Wajib Anggota',
     'simpanan-sukarela': 'Simpanan Sukarela Anggota',
     'pengambilan-sampah': 'Riwayat Pengambilan Sampah',
-    'struk': 'Struk Pengambilan Sampah',
+
     'harga-sampah': 'Papan Harga Sampah',
     'laporan': 'Pusat Laporan Anggota',
     'laporan-shu': 'Laporan SHU Anggota',
