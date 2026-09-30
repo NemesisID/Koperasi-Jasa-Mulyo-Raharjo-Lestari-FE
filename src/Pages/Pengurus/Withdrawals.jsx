@@ -19,19 +19,46 @@ function WithdrawModal({ member, onClose, onDone }) {
     const [photo, setPhoto] = useState(null);
     const [notes, setNotes] = useState('');
     const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    const availableBalance = Number(member.available_balance ?? member.balance ?? member.current_balance ?? 0);
+
+    const handleAmountChange = (e) => {
+        const raw = e.target.value.replace(/[^\d]/g, '');
+        if (!raw) {
+            setAmount('');
+            setError('');
+            return;
+        }
+        const numeric = Number(raw);
+        if (numeric > availableBalance) {
+            setAmount(availableBalance.toLocaleString('id-ID'));
+            setError(`Nominal penarikan tidak boleh melebihi saldo tersedia (${rp(availableBalance)}).`);
+            return;
+        }
+        setAmount(numeric.toLocaleString('id-ID'));
+        setError('');
+    };
 
     const submit = async (e) => {
         e.preventDefault();
         setError('');
+        const withdrawValue = Number(String(amount).replace(/[^\d]/g, ''));
+        if (!withdrawValue || withdrawValue <= 0) {
+            setError('Masukkan jumlah nominal penarikan yang valid.');
+            return;
+        }
+        if (withdrawValue > availableBalance) {
+            setError(`Nominal penarikan melebihi saldo tersedia (${rp(availableBalance)}).`);
+            return;
+        }
         setSaving(true);
         try {
             const fd = new FormData();
             fd.append('member_id', member.id);
-            fd.append('amount', Number(String(amount).replace(/[^\d]/g, '')));
+            fd.append('amount', withdrawValue);
             if (photo) fd.append('photo', photo);
             if (notes) fd.append('notes', notes);
             await api('/wallet/withdraw-cash', { method: 'POST', body: fd });
-            onDone(`Penarikan tunai ${member.name} berhasil — saldo terpotong.`);
+            onDone(`Penarikan tunai ${member.name} sebesar ${rp(withdrawValue)} berhasil — saldo terpotong.`);
         } catch (err) {
             const fieldErrs = err.errors && Object.values(err.errors)[0]?.[0];
             setError(fieldErrs || err.message || 'Gagal memproses penarikan.');
@@ -39,7 +66,7 @@ function WithdrawModal({ member, onClose, onDone }) {
     };
 
     return (
-        // Grid 2 kolom info anggota + form → lg.
+        // Grid 3 kolom info anggota (No. Anggota, Saldo Tersedia, Tanggal) + form → lg.
         <Modal open onClose={onClose} size="lg">
             <div className="flex items-center justify-between px-6 py-4 bg-accent/60 border-b border-border/60">
                 <h2 className="flex items-center gap-2.5 text-base font-bold text-primary">
@@ -52,10 +79,14 @@ function WithdrawModal({ member, onClose, onDone }) {
                 </button>
             </div>
             <form onSubmit={submit} className="flex flex-col gap-4 p-6 bg-card">
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-3">
                     <div className="rounded-xl bg-[#eef3fc] px-4 py-3">
                         <span className="text-xs font-semibold text-primary">No. Anggota</span>
                         <strong className="block text-sm font-bold text-foreground">{member.member_code ?? '-'}</strong>
+                    </div>
+                    <div className="rounded-xl bg-emerald-50 border border-emerald-200/60 px-4 py-3">
+                        <span className="text-xs font-semibold text-emerald-800">Saldo Tersedia</span>
+                        <strong className="block text-sm font-bold text-emerald-700">{rp(availableBalance)}</strong>
                     </div>
                     <div className="rounded-xl bg-[#eef3fc] px-4 py-3">
                         <span className="text-xs font-semibold text-primary">Tanggal (hari ini)</span>
@@ -63,18 +94,33 @@ function WithdrawModal({ member, onClose, onDone }) {
                     </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-foreground/80">Jumlah Penarikan (Rp)</label>
+                    <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-foreground/80">Jumlah Penarikan (Rp)</label>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setAmount(availableBalance.toLocaleString('id-ID'));
+                                setError('');
+                            }}
+                            className="text-[11px] font-semibold text-primary hover:underline"
+                        >
+                            Tarik Semua ({rp(availableBalance)})
+                        </button>
+                    </div>
                     <div className="relative">
                         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-primary">Rp</span>
                         <input
                             required
                             inputMode="numeric"
                             value={amount}
-                            onChange={e => setAmount(e.target.value)}
+                            onChange={handleAmountChange}
                             placeholder="0"
                             className={cn(inputCls, 'pl-11 font-bold')}
                         />
                     </div>
+                    <span className="text-[11px] text-muted-foreground">
+                        Maksimal penarikan: <strong className="font-semibold text-foreground">{rp(availableBalance)}</strong>
+                    </span>
                 </div>
                 <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold text-foreground/80">Bukti Foto (opsional)</label>
@@ -101,7 +147,7 @@ function WithdrawModal({ member, onClose, onDone }) {
                         className="h-11 flex-1 rounded-xl border border-border bg-card text-sm font-semibold text-foreground/80 hover:bg-secondary transition-all">
                         Batal
                     </button>
-                    <button type="submit" disabled={saving}
+                    <button type="submit" disabled={saving || availableBalance <= 0}
                         className="h-11 flex-[1.5] rounded-xl bg-primary text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-60">
                         {saving ? 'Memproses...' : 'Tarik Tunai'}
                     </button>
@@ -113,7 +159,7 @@ function WithdrawModal({ member, onClose, onDone }) {
 
 export default function WithdrawalsPage() {
     const { showStatus } = usePopup();
-    const { data, loading } = useApi('/members?status=aktif&per_page=200');
+    const { data, loading, reload: reloadMembers } = useApi('/members?status=aktif&per_page=200');
     const { data: requests, reload: reloadRequests } = useApi('/wallet/withdraw-requests?status=pending&per_page=50');
     const [q, setQ] = useState('');
     const [target, setTarget] = useState(null);
@@ -132,6 +178,7 @@ export default function WithdrawalsPage() {
                 body: { action },
             });
             reloadRequests();
+            reloadMembers();
             showStatus(action === 'approve' ? 'Penarikan disetujui.' : 'Penarikan ditolak.', `Permintaan ${r.member?.name ?? ''} diproses.`);
         } catch (err) {
             showStatus('Gagal Memproses', err.message || 'Gagal memproses permintaan.');
@@ -203,35 +250,42 @@ export default function WithdrawalsPage() {
                     </div>
                 </div>
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[640px] text-left text-sm">
+                    <table className="w-full min-w-[720px] text-left text-sm">
                         <thead className="bg-[#eef3fc] text-xs font-bold uppercase tracking-wider text-slate-700">
                             <tr>
                                 <th className="px-6 py-3.5">No. Anggota</th>
                                 <th className="px-6 py-3.5">Nama</th>
                                 <th className="px-6 py-3.5">Alamat</th>
+                                <th className="px-6 py-3.5">Saldo Tersedia</th>
                                 <th className="px-6 py-3.5">Status</th>
                                 <th className="px-6 py-3.5">Aksi</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
-                            {loading && <tr><td colSpan={5} className="px-6 py-8 text-center text-sm text-muted-foreground">Memuat data…</td></tr>}
-                            {!loading && members.length === 0 && <tr><td colSpan={5} className="px-6 py-8 text-center text-sm text-muted-foreground">Anggota tidak ditemukan.</td></tr>}
-                            {members.map(m => (
-                                <tr key={m.id} className="hover:bg-secondary/40 transition-colors">
-                                    <td className="px-6 py-4 font-mono text-xs font-semibold text-foreground">{m.member_code ?? '-'}</td>
-                                    <td className="px-6 py-4 font-semibold text-foreground">{m.name}</td>
-                                    <td className="px-6 py-4 text-muted-foreground">{m.address ?? '-'}</td>
-                                    <td className="px-6 py-4">
-                                        <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">{m.status}</span>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <button onClick={() => setTarget(m)}
-                                            className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90">
-                                            <Banknote size={14} /> Penarikan
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
+                            {loading && <tr><td colSpan={6} className="px-6 py-8 text-center text-sm text-muted-foreground">Memuat data…</td></tr>}
+                            {!loading && members.length === 0 && <tr><td colSpan={6} className="px-6 py-8 text-center text-sm text-muted-foreground">Anggota tidak ditemukan.</td></tr>}
+                            {members.map(m => {
+                                const memberBal = Number(m.available_balance ?? m.balance ?? m.current_balance ?? 0);
+                                return (
+                                    <tr key={m.id} className="hover:bg-secondary/40 transition-colors">
+                                        <td className="px-6 py-4 font-mono text-xs font-semibold text-foreground">{m.member_code ?? '-'}</td>
+                                        <td className="px-6 py-4 font-semibold text-foreground">{m.name}</td>
+                                        <td className="px-6 py-4 text-muted-foreground">{m.address ?? '-'}</td>
+                                        <td className="px-6 py-4">
+                                            <span className="font-bold text-emerald-700">{rp(memberBal)}</span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">{m.status}</span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <button onClick={() => setTarget(m)}
+                                                className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90">
+                                                <Banknote size={14} /> Penarikan
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
@@ -244,7 +298,11 @@ export default function WithdrawalsPage() {
                 <WithdrawModal
                     member={target}
                     onClose={() => setTarget(null)}
-                    onDone={msg => { setTarget(null); showStatus('Penarikan Berhasil', msg); }}
+                    onDone={msg => {
+                        setTarget(null);
+                        reloadMembers();
+                        showStatus('Penarikan Berhasil', msg);
+                    }}
                 />
             )}
 
