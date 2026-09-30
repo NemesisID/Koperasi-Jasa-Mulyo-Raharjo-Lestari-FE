@@ -1,6 +1,6 @@
 // Manajemen user (pengurus/petugas/anggota) oleh pengurus — GET/POST/PUT/DELETE /users.
 import { useState } from 'react';
-import { Eye, Pencil, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { Archive, Eye, Pencil, RotateCcw, Search, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { PageHeader, Pager } from '@/Components/Koperasi/ManagerUI';
 import { ConfirmPopup, Modal } from '@/Components/Koperasi/Popups';
 import { api, useApi, rp, dfmt } from '@/lib/api';
@@ -162,13 +162,16 @@ function UserForm({ user, onDone, onCancel }) {
 }
 
 export default function UsersPage({ showStatus }) {
-    const { data, meta, loading, reload } = useApi('/users?per_page=25');
+    // ?trashed=1 → tampilkan akun yang sudah diarsipkan (soft delete).
+    const [showArchived, setShowArchived] = useState(false);
+    const { data, meta, loading, reload } = useApi(showArchived ? '/users?per_page=25&trashed=1' : '/users?per_page=25');
     // Tab per role — anggota dulu (paling sering dipakai), lalu pengurus & petugas.
     const [role, setRole] = useState('anggota');
     const [search, setSearch] = useState('');
     const [editing, setEditing] = useState(null);
     const [detail, setDetail] = useState(null);
     const [deleting, setDeleting] = useState(null);
+    const [restoringId, setRestoringId] = useState(null);
 
     const rows = (data ?? []).filter(u =>
         u.role === role &&
@@ -176,16 +179,47 @@ export default function UsersPage({ showStatus }) {
     );
     const counts = r => (data ?? []).filter(u => u.role === r).length;
 
+    // Arsip (soft delete) — riwayat transaksi tetap merujuk akun ini.
+    const archiveUser = async (u) => {
+        setDeleting(null);
+        try {
+            const res = await api(`/users/${u.id}`, { method: 'DELETE' });
+            showStatus('Akun Diarsipkan', res?.message || `Akun ${u.name} berhasil diarsipkan.`);
+            reload();
+        } catch (err) { showStatus('Gagal Mengarsipkan', err.message); }
+    };
+
+    const restoreUser = async (u) => {
+        setRestoringId(u.id);
+        try {
+            const res = await api(`/users/${u.id}/restore`, { method: 'PATCH' });
+            showStatus('Akun Dipulihkan', res?.message || `Akun ${u.name} berhasil dipulihkan.`);
+            reload();
+        } catch (err) { showStatus('Gagal Memulihkan', err.message); }
+        finally { setRestoringId(null); }
+    };
+
     return (
         <div className="flex flex-col gap-6">
             <PageHeader
                 title="Manajemen Pengguna"
                 desc="Kelola akun koperasi: pengurus, petugas lapangan, dan warga (anggota)."
                 action={
-                    <button onClick={() => setEditing({})}
-                        className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90">
-                        <UserPlus size={16} /> <span>Buat Akun</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => { setShowArchived(v => !v); setSearch(''); }}
+                            className={cn(
+                                'flex h-10 items-center gap-2 rounded-xl border px-4 text-xs font-semibold transition-all',
+                                showArchived
+                                    ? 'border-amber-400 bg-amber-50 text-amber-700'
+                                    : 'border-border bg-card text-muted-foreground hover:bg-secondary hover:text-primary'
+                            )}>
+                            <Archive size={16} /> <span>{showArchived ? 'Lihat Aktif' : 'Arsip'}</span>
+                        </button>
+                        <button onClick={() => setEditing({})} disabled={showArchived}
+                            className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-50">
+                            <UserPlus size={16} /> <span>Buat Akun</span>
+                        </button>
+                    </div>
                 }
             />
 
@@ -219,7 +253,7 @@ export default function UsersPage({ showStatus }) {
 
             <section className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
                 <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center border-b border-border/60">
-                    <h2 className="text-lg font-bold text-foreground">Daftar Akun {ROLE_LABEL[role] ?? role}</h2>
+                    <h2 className="text-lg font-bold text-foreground">{showArchived ? `Akun Diarsipkan — ${ROLE_LABEL[role] ?? role}` : `Daftar Akun ${ROLE_LABEL[role] ?? role}`}</h2>
                     <div className="relative w-full sm:w-64">
                         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama / username…"
@@ -252,8 +286,19 @@ export default function UsersPage({ showStatus }) {
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex justify-end gap-1">
                                             <button onClick={() => setDetail(u)} aria-label={`Detail ${u.name}`} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-primary"><Eye size={16} /></button>
-                                            <button onClick={() => setEditing(u)} aria-label={`Edit ${u.name}`} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-primary"><Pencil size={16} /></button>
-                                            <button onClick={() => setDeleting(u)} aria-label={`Hapus ${u.name}`} className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-destructive"><Trash2 size={16} /></button>
+                                            {showArchived ? (
+                                                // Akun terarsip hanya bisa dipulihkan (riwayat tetap utuh).
+                                                <button onClick={() => restoreUser(u)} disabled={restoringId === u.id}
+                                                    aria-label={`Pulihkan ${u.name}`} title="Pulihkan akun"
+                                                    className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
+                                                    <RotateCcw size={14} /> {restoringId === u.id ? 'Memulihkan…' : 'Pulihkan'}
+                                                </button>
+                                            ) : (
+                                                <>
+                                                    <button onClick={() => setEditing(u)} aria-label={`Edit ${u.name}`} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-primary"><Pencil size={16} /></button>
+                                                    <button onClick={() => setDeleting(u)} aria-label={`Arsipkan ${u.name}`} title="Arsipkan akun" className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-destructive"><Trash2 size={16} /></button>
+                                                </>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
@@ -263,6 +308,11 @@ export default function UsersPage({ showStatus }) {
                 </div>
                 <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-border/60 bg-slate-50/50 text-xs text-muted-foreground">
                     <span>Menampilkan {rows.length} dari {meta?.total ?? 0} data</span>
+                    {showArchived && (
+                        <span className="inline-flex items-center gap-1 text-amber-600">
+                            <Archive size={13} /> Akun terarsip tidak dapat login & tidak muncul di daftar aktif
+                        </span>
+                    )}
                     <Pager total={Math.max(1, Math.ceil((meta?.total ?? 0) / (meta?.per_page ?? 25)))} />
                 </div>
             </section>
@@ -276,19 +326,12 @@ export default function UsersPage({ showStatus }) {
             {deleting && (
                 <ConfirmPopup
                     open
-                    title={`Hapus akun ${deleting.name}?`}
-                    description="Tindakan ini tidak dapat dibatalkan."
-                    actionLabel="Hapus"
+                    title={`Arsipkan akun ${deleting.name}?`}
+                    description="Akun akan dinonaktifkan dan disembunyikan dari daftar, namun seluruh riwayat transaksinya tetap tersimpan. Akun dapat dipulihkan kapan saja dari tab Arsip."
+                    actionLabel="Ya, Arsipkan"
                     tone="destructive"
                     onCancel={() => setDeleting(null)}
-                    onConfirm={async () => {
-                        const target = deleting;
-                        setDeleting(null);
-                        try {
-                            const res = await api(`/users/${target.id}`, { method: 'DELETE' });
-                            showStatus('Akun Dihapus', res?.message || 'Akun berhasil dihapus.'); reload();
-                        } catch (err) { showStatus('Gagal Menghapus', err.message); }
-                    }}
+                    onConfirm={() => archiveUser(deleting)}
                 />
             )}
 

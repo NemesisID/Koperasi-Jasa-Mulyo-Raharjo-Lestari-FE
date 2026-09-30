@@ -5,7 +5,7 @@
 // menghitung upah sampah belum-terpilah (TrashWeighingService).
 import { useState } from 'react';
 import {
-    CheckCircle2, History, Pencil, Plus, Recycle, Save, Search, Tag, TrendingDown, TrendingUp, X,
+    Archive, CheckCircle2, History, Pencil, Plus, Recycle, RotateCcw, Save, Search, Tag, TrendingDown, TrendingUp, X,
 } from 'lucide-react';
 import { PageHeader, StatCard } from '@/Components/Koperasi/ManagerUI';
 import { Modal, ConfirmPopup } from '@/Components/Koperasi/Popups';
@@ -179,11 +179,15 @@ function HistoryModal({ category, onClose }) {
 
 export default function TrashPricesPage() {
     const { showStatus } = usePopup();
-    const { data, loading, error, reload } = useApi('/trash-categories');
+    // ?trashed=1 → tampilkan kategori yang sudah diarsipkan (soft delete).
+    const [showArchived, setShowArchived] = useState(false);
+    const { data, loading, error, reload } = useApi(showArchived ? '/trash-categories?trashed=1' : '/trash-categories');
     const [group, setGroup] = useState('semua');
     const [search, setSearch] = useState('');
     const [editing, setEditing] = useState(null);   // null | {} (baru) | category
     const [historyOf, setHistoryOf] = useState(null);
+    const [deleting, setDeleting] = useState(null); // kategori menunggu arsip
+    const [restoringId, setRestoringId] = useState(null);
 
     const catalog = data ?? [];
     const active = MAIN_GROUPS.find(g => g.key === group) ?? MAIN_GROUPS[0];
@@ -226,19 +230,57 @@ export default function TrashPricesPage() {
         } finally { setSavingId(null); }
     };
 
+    // Arsip (soft delete) — riwayat timbangan tetap merujuk kategori ini.
+    const archiveCategory = async (c) => {
+        setDeleting(null);
+        try {
+            const res = await api(`/trash-categories/${c.id}`, { method: 'DELETE' });
+            reload();
+            showStatus('Kategori Diarsipkan', res?.message || `Kategori ${c.name} berhasil diarsipkan.`);
+        } catch (err) {
+            showStatus('Gagal Mengarsipkan', err.message || 'Gagal mengarsipkan kategori.');
+        }
+    };
+
+    const restoreCategory = async (c) => {
+        setRestoringId(c.id);
+        try {
+            const res = await api(`/trash-categories/${c.id}/restore`, { method: 'PATCH' });
+            reload();
+            showStatus('Kategori Dipulihkan', res?.message || `Kategori ${c.name} berhasil dipulihkan.`);
+        } catch (err) {
+            showStatus('Gagal Memulihkan', err.message || 'Gagal memulihkan kategori.');
+        } finally { setRestoringId(null); }
+    };
+
     return (
         <div className="flex flex-col gap-6">
             <PageHeader
                 title="Manajemen Katalog Sampah"
                 desc="Kelola kategori & harga sampah — pengurus mengisi Harga Jual; Harga Beli anggota otomatis (harga jual − 20%)."
                 action={
-                    <button
-                        onClick={() => setEditing({})}
-                        className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90"
-                    >
-                        <Plus size={16} />
-                        <span>Buat Kategori</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => { setShowArchived(v => !v); setDrafts({}); }}
+                            className={cn(
+                                'flex h-10 items-center gap-2 rounded-xl border px-4 text-xs font-semibold transition-all',
+                                showArchived
+                                    ? 'border-amber-400 bg-amber-50 text-amber-700'
+                                    : 'border-border bg-card text-muted-foreground hover:bg-secondary hover:text-primary'
+                            )}
+                        >
+                            <Archive size={16} />
+                            <span>{showArchived ? 'Lihat Katalog' : 'Arsip'}</span>
+                        </button>
+                        <button
+                            onClick={() => setEditing({})}
+                            disabled={showArchived}
+                            className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-primary/90 disabled:opacity-50"
+                        >
+                            <Plus size={16} />
+                            <span>Buat Kategori</span>
+                        </button>
+                    </div>
                 }
             />
 
@@ -250,7 +292,7 @@ export default function TrashPricesPage() {
 
             <section className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs">
                 <div className="flex flex-col justify-between gap-4 p-5 border-b border-border/60 lg:flex-row lg:items-center">
-                    <h2 className="text-lg font-bold text-foreground">Katalog Harga Sampah</h2>
+                    <h2 className="text-lg font-bold text-foreground">{showArchived ? 'Kategori Diarsipkan' : 'Katalog Harga Sampah'}</h2>
                     <div className="flex flex-wrap items-center gap-2">
                         {MAIN_GROUPS.map(g => (
                             <button
@@ -271,7 +313,7 @@ export default function TrashPricesPage() {
                             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari sampah…"
                                 className="h-9 w-full rounded-xl border border-border bg-slate-50/50 pl-9 pr-3 text-xs focus:bg-white" />
                         </div>
-                        {dirtyList.length > 0 && (
+                        {dirtyList.length > 0 && !showArchived && (
                             <button
                                 onClick={() => setConfirmSave({ list: dirtyList })}
                                 disabled={savingId !== null}
@@ -332,6 +374,7 @@ export default function TrashPricesPage() {
                                                     value={Number(d.price_sell || 0).toLocaleString('id-ID')}
                                                     onChange={e => setDraft(c.id, 'price_sell', e.target.value.replace(/\D/g, ''), d)}
                                                     onKeyDown={e => e.key === 'Enter' && dirty && savePrice(c)}
+                                                    disabled={showArchived}
                                                     aria-label={`Harga jual ${c.name}`}
                                                     className={cn(cellInputCls, 'pl-9 w-36')}
                                                 />
@@ -344,28 +387,49 @@ export default function TrashPricesPage() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-1.5">
-                                                <button
-                                                    onClick={() => setConfirmSave({ list: [c] })}
-                                                    disabled={!dirty || savingId === c.id}
-                                                    title={dirty ? 'Simpan harga' : 'Tidak ada perubahan'}
-                                                    className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-white hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed"
-                                                >
-                                                    <Save size={14} />
-                                                </button>
-                                                <button
-                                                    onClick={() => setEditing(c)}
-                                                    title="Edit kategori"
-                                                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-foreground/70 hover:border-primary hover:text-primary"
-                                                >
-                                                    <Pencil size={14} />
-                                                </button>
-                                                <button
-                                                    onClick={() => setHistoryOf(c)}
-                                                    title="Riwayat harga"
-                                                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-foreground/70 hover:border-primary hover:text-primary"
-                                                >
-                                                    <History size={14} />
-                                                </button>
+                                                {showArchived ? (
+                                                    // Kategori terarsip hanya bisa dipulihkan; riwayat timbangannya tetap utuh.
+                                                    <button
+                                                        onClick={() => restoreCategory(c)}
+                                                        disabled={restoringId === c.id}
+                                                        title="Pulihkan kategori"
+                                                        className="flex h-8 items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                                                    >
+                                                        <RotateCcw size={14} /> {restoringId === c.id ? 'Memulihkan…' : 'Pulihkan'}
+                                                    </button>
+                                                ) : (
+                                                    <>
+                                                        <button
+                                                            onClick={() => setConfirmSave({ list: [c] })}
+                                                            disabled={!dirty || savingId === c.id}
+                                                            title={dirty ? 'Simpan harga' : 'Tidak ada perubahan'}
+                                                            className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-white hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed"
+                                                        >
+                                                            <Save size={14} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setEditing(c)}
+                                                            title="Edit kategori"
+                                                            className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-foreground/70 hover:border-primary hover:text-primary"
+                                                        >
+                                                            <Pencil size={14} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setHistoryOf(c)}
+                                                            title="Riwayat harga"
+                                                            className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-foreground/70 hover:border-primary hover:text-primary"
+                                                        >
+                                                            <History size={14} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setDeleting(c)}
+                                                            title="Arsipkan kategori"
+                                                            className="flex h-8 w-8 items-center justify-center rounded-xl border border-border text-foreground/70 hover:border-rose-300 hover:bg-rose-50 hover:text-destructive"
+                                                        >
+                                                            <Archive size={14} />
+                                                        </button>
+                                                    </>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -377,7 +441,11 @@ export default function TrashPricesPage() {
 
                 <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-border/60 bg-slate-50/50 text-xs text-muted-foreground">
                     <span>Menampilkan {filtered.length} dari {catalog.length} kategori</span>
-                    <span className="inline-flex items-center gap-1"><CheckCircle2 size={13} /> Perubahan harga tercatat di log audit</span>
+                    <span className="inline-flex items-center gap-1">
+                        {showArchived
+                            ? <><Archive size={13} /> Kategori terarsip tidak muncul di katalog publik</>
+                            : <><CheckCircle2 size={13} /> Perubahan harga tercatat di log audit</>}
+                    </span>
                 </div>
             </section>
 
@@ -393,6 +461,19 @@ export default function TrashPricesPage() {
                 />
             )}
             {historyOf && <HistoryModal category={historyOf} onClose={() => setHistoryOf(null)} />}
+
+            {/* Arsip (soft delete) — riwayat timbangan tetap tersimpan & bisa dipulihkan */}
+            {deleting && (
+                <ConfirmPopup
+                    open
+                    title={`Arsipkan kategori ${deleting.name}?`}
+                    description="Kategori akan disembunyikan dari katalog, namun riwayat penimbangan yang memakainya tetap tersimpan. Kategori dapat dipulihkan kapan saja dari tab Arsip."
+                    actionLabel="Ya, Arsipkan"
+                    tone="destructive"
+                    onCancel={() => setDeleting(null)}
+                    onConfirm={() => archiveCategory(deleting)}
+                />
+            )}
 
             {/* #19: perubahan harga memengaruhi uang anggota — wajib konfirmasi */}
             {confirmSave && (
