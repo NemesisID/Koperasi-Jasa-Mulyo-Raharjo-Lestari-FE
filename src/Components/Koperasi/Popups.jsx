@@ -293,7 +293,6 @@ export function FormPopup({ kind, onClose, onSuccess }) {
                     body: {
                         name: fd.get('memberName'),
                         username: fd.get('username'),
-                        email: `${fd.get('username')}@anggota.local`,
                         password: fd.get('password'),
                         role: 'anggota',
                         member_types: memberTypes,

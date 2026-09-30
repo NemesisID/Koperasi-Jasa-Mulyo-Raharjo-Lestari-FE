@@ -60,10 +60,10 @@ function LoginCard() {
             <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit}>
                 {/* Identity */}
                 <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground" htmlFor="identity">
-                    Username atau Email
+                    Username
                     <span className="flex h-12 items-center gap-3 rounded-xl border border-input/80 bg-background px-3 text-muted-foreground transition-all focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
                         <UserRound size={17} />
-                        <input id="identity" name="identity" autoComplete="username" placeholder="Masukkan username/Email"
+                        <input id="identity" name="identity" autoComplete="username" placeholder="Masukkan username"
                             className="h-full min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0" />
                     </span>
                 </label>

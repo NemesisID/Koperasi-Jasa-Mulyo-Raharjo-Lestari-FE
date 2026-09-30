@@ -114,11 +114,11 @@ function UserForm({ user, onDone, onCancel }) {
                             <span className="text-[11px] font-normal text-muted-foreground">Menentukan lokasi penjemputan sampah anggota (rumah / pasar).</span>
                         </div>
                     )}
-                    <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Username
-                        <input required value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} className={inputCls} />
-                    </label>
                     <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Email
                         <input required type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={inputCls} />
+                    </label>
+                    <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">Username
+                        <input required value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} className={inputCls} />
                     </label>
                 </div>
                 <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/80">
@@ -231,22 +231,20 @@ export default function UsersPage({ showStatus }) {
                         <thead className="bg-[#eef3fc] text-xs font-bold uppercase tracking-wider text-slate-700">
                             <tr>
                                 <th className="px-6 py-3.5">Nama & Username</th>
-                                <th className="px-6 py-3.5">Email</th>
                                 <th className="px-6 py-3.5">Role</th>
                                 <th className="px-6 py-3.5">Dibuat</th>
                                 <th className="px-6 py-3.5 text-right">Aksi</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
-                            {loading && <tr><td colSpan={5} className="px-6 py-8 text-center text-sm text-muted-foreground">Memuat data…</td></tr>}
-                            {!loading && rows.length === 0 && <tr><td colSpan={5} className="px-6 py-10 text-center text-sm text-muted-foreground">Tidak ada akun yang cocok.</td></tr>}
+                            {loading && <tr><td colSpan={4} className="px-6 py-8 text-center text-sm text-muted-foreground">Memuat data…</td></tr>}
+                            {!loading && rows.length === 0 && <tr><td colSpan={4} className="px-6 py-10 text-center text-sm text-muted-foreground">Tidak ada akun yang cocok.</td></tr>}
                             {rows.map(u => (
                                 <tr key={u.id} className="hover:bg-secondary/40 transition-colors">
                                     <td className="px-6 py-4">
                                         <span className="block font-semibold text-foreground">{u.name}</span>
                                         <span className="block font-mono text-[11px] font-bold text-muted-foreground">@{u.username}</span>
                                     </td>
-                                    <td className="px-6 py-4 text-muted-foreground">{u.email}</td>
                                     <td className="px-6 py-4">
                                         <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-bold uppercase', ROLE_STYLE[u.role])}>{ROLE_LABEL[u.role] ?? u.role}</span>
                                     </td>
@@ -295,7 +293,7 @@ export default function UsersPage({ showStatus }) {
             )}
 
             {detail && (
-                // Grid 2 kolom kartu detail + email/alamat panjang → lg.
+                // Grid 2 kolom kartu detail + username/alamat panjang → lg.
                 <Modal open onClose={() => setDetail(null)} size="lg">
                     <div className="flex items-center justify-between bg-accent/60 px-6 py-4 border-b border-border/60">
                         <h2 className="flex items-center gap-2.5 text-base font-bold text-primary"><Users size={20} /><span>Detail Akun</span></h2>
@@ -303,7 +301,7 @@ export default function UsersPage({ showStatus }) {
                     </div>
                     <div className="grid gap-3 p-6 sm:grid-cols-2 bg-card">
                         {[
-                            ['Nama', detail.name], ['Username', `@${detail.username}`], ['Email', detail.email],
+                            ['Nama', detail.name], ['Username', `@${detail.username}`],
                             ['Role', ROLE_LABEL[detail.role] ?? detail.role?.toUpperCase()], ['Telepon', detail.phone ?? '-'],
                             ...(detail.role === 'anggota'
                                 ? [
