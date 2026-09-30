@@ -324,15 +324,18 @@ export default function TrashPricesPage() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value={d.price_sell}
-                                                onChange={e => setDraft(c.id, 'price_sell', e.target.value, d)}
-                                                onKeyDown={e => e.key === 'Enter' && dirty && savePrice(c)}
-                                                aria-label={`Harga jual ${c.name}`}
-                                                className={cellInputCls}
-                                            />
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-primary">Rp</span>
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    value={Number(d.price_sell || 0).toLocaleString('id-ID')}
+                                                    onChange={e => setDraft(c.id, 'price_sell', e.target.value.replace(/\D/g, ''), d)}
+                                                    onKeyDown={e => e.key === 'Enter' && dirty && savePrice(c)}
+                                                    aria-label={`Harga jual ${c.name}`}
+                                                    className={cn(cellInputCls, 'pl-9 w-36')}
+                                                />
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">

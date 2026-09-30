@@ -117,6 +117,8 @@ export function MemberShell({ children, currentPage, setPage }) {
                     <span>Riwayat Pengambilan</span>
                 </button>
 
+
+
                 {/* Dompet & SHU (aktifkan halaman yatim WalletAndShu) */}
                 <button onClick={() => nav('dompet-shu')} className={navBtnCls(is('dompet-shu'))}>
                     <Wallet size={18} />

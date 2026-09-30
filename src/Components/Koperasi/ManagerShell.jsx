@@ -67,11 +67,7 @@ export function ManagerShell({ children, currentPage, setPage }) {
                     <span>Manajemen User</span>
                 </button>
 
-                {/* Manajemen Anggota (ploting petugas + arsip) */}
-                <button onClick={() => nav('manajemen-anggota')} className={navBtnCls(is('manajemen-anggota'))}>
-                    <UserRound size={18} />
-                    <span>Manajemen Anggota</span>
-                </button>
+
 
                 {/* Harga Sampah */}
                 <button onClick={() => nav('harga-sampah')} className={navBtnCls(is('harga-sampah'))}>
@@ -79,11 +75,7 @@ export function ManagerShell({ children, currentPage, setPage }) {
                     <span>Harga Sampah</span>
                 </button>
 
-                {/* Log perubahan harga (#20) */}
-                <button onClick={() => nav('log-harga')} className={navBtnCls(is('log-harga'))}>
-                    <FileBarChart size={18} />
-                    <span>Log Harga</span>
-                </button>
+
 
                 {/* Monitoring Penjemputan */}
                 <button onClick={() => nav('penjemputan')} className={navBtnCls(is('penjemputan'))}>

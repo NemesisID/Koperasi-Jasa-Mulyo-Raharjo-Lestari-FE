@@ -3,8 +3,8 @@ import { Navigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import {
     Banknote, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, CirclePlus,
-    Home, Landmark, Leaf, Plus, Store, TrendingDown, TrendingUp,
-    UserRound, WalletCards, X
+    Home, Landmark, Leaf, MessageSquareWarning, Plus, Recycle, Store, TrendingDown, TrendingUp,
+    UserRound, Wallet, WalletCards, X
 } from 'lucide-react';
 import { MemberShell } from '@/Components/Koperasi/MemberShell';
 import ComplaintFormModal from '@/Components/Koperasi/ComplaintFormModal';
@@ -16,6 +16,7 @@ import {
 import { FormPopup, Modal, StatusPopup } from '@/Components/Koperasi/Popups';
 import { useApi, api, rp, dfmt } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { complaintStatus } from '@/lib/complaint';
 
 const cn = (...cls) => cls.filter(Boolean).join(' ');
 
@@ -117,6 +118,7 @@ function SummaryCard({ title, amount, note }) {
 // #15: label sumber mutasi ramah-baca — potongan saldo rutin masuk sini dari BE.
 const SOURCE_LABEL = {
     sampah: 'Setoran Sampah',
+    setor_sampah: 'Setoran Sampah',
     shu: 'SHU',
     penarikan: 'Penarikan',
     potongan_saldo: 'Potongan Tagihan Rutin',
@@ -487,11 +489,15 @@ function RequestAgainModal({ user, onClose, onDone }) {
 
 function PickupHistoryPage({ openForm }) {
     const { user } = useAuth();
-    const { data, loading, error } = useApi('/pickups?per_page=50');
+    const { data, loading, error, reload: reloadPickups } = useApi('/pickups?per_page=50');
+    const { data: complaints, reload: reloadComplaints } = useApi('/complaints');
     const [again, setAgain] = useState(null);
     const [reporting, setReporting] = useState(null);
+    const [notaPopup, setNotaPopup] = useState(null);
     const [done, setDone] = useState('');
     const rows = data ?? [];
+
+    const complaintMap = new Map((complaints ?? []).map(c => [c.pickup?.id, c]));
 
     const isSameDay = (iso) => {
         if (!iso) return false;
@@ -500,11 +506,56 @@ function PickupHistoryPage({ openForm }) {
         return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
     };
 
+    const reloadAll = () => { reloadPickups(); reloadComplaints(); };
+
+    // Prepare nota data for popup from dedicated Receipt object or items fallback
+    const buildNota = (p) => {
+        const rc = p.receipt;
+        // Jika data nota dari tabel receipts tersedia, gunakan langsung snapshot frozen tersebut
+        let items = [];
+        if (rc && Array.isArray(rc.items) && rc.items.length > 0) {
+            items = rc.items.map(i => ({
+                name: i.name || 'Sampah',
+                weight: Number(i.weight ?? 0),
+                unit: i.unit || 'kg',
+                price: Number(i.price ?? i.price_per_unit ?? 0),
+                total: Number(i.total ?? i.total_value ?? 0),
+            }));
+        } else {
+            items = (p.items ?? []).map(i => {
+                const weight = Number(i.weight_kg ?? i.unit_count ?? 0);
+                const total = Number(i.total_value || 0);
+                const savedPrice = i.price_per_unit != null ? Number(i.price_per_unit) : null;
+                const price = (savedPrice && savedPrice > 0) ? savedPrice : (weight > 0 ? Math.round(total / weight) : 0);
+                return {
+                    name: i.category?.name || 'Sampah',
+                    weight,
+                    unit: i.category?.unit || 'kg',
+                    price,
+                    total,
+                };
+            });
+        }
+
+        return {
+            ...p,
+            _items: items,
+            _gross: Number(rc?.total_gross ?? p.total_gross ?? 0),
+            _fee: Number(rc?.total_fee ?? p.total_fee ?? 0),
+            _net: Number(rc?.total_net ?? p.total_net ?? 0),
+            _code: rc?.receipt_number || `NTR-${String(p.id).padStart(6, '0')}`,
+            _officerName: rc?.officer_name || p.officer?.name,
+            _locationLabel: rc?.location_label,
+            _issuedAt: rc?.issued_at || p.completed_at || p.scheduled_at,
+            _complaint: complaintMap.get(p.id),
+        };
+    };
+
     return (
         <div className="flex flex-col gap-6">
             <PageTitle
                 title="Riwayat Pengambilan Sampah"
-                description="Riwayat sampah Anda yang diambil petugas. Minta jemput untuk jadwal tertentu."
+                description="Riwayat sampah Anda yang diambil petugas beserta nota digital. Minta jemput untuk jadwal tertentu."
                 action={
                     <div className="flex gap-2">
                         <button
@@ -527,7 +578,7 @@ function PickupHistoryPage({ openForm }) {
             <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
                 <CalendarDays size={16} className="mt-0.5 shrink-0 text-emerald-700" />
                 <p className="text-xs leading-relaxed text-emerald-900">
-                    <strong>Jadwal pakem:</strong> jadwal pengambilan sampah ditetapkan tetap oleh koperasi dan tidak dapat diatur sendiri oleh anggota. Untuk kebutuhan di luar jadwal, gunakan tombol <strong>Minta Jemput</strong>.
+                    <strong>Jadwal Tetap:</strong> jadwal pengambilan sampah ditetapkan tetap oleh koperasi dan tidak dapat diatur sendiri oleh anggota. Untuk kebutuhan di luar jadwal, gunakan tombol <strong>Minta Jemput</strong>.
                 </p>
             </div>
             <DataPanel
@@ -550,9 +601,10 @@ function PickupHistoryPage({ openForm }) {
                                     </button>
                                 )}
                                 {p.status === 'selesai' && (
-                                    <button onClick={() => setReporting(p)}
-                                        className="h-8 rounded-xl border border-primary px-3 text-xs font-semibold text-primary hover:bg-primary hover:text-white">
-                                        Laporkan
+                                    <button onClick={() => setNotaPopup(buildNota(p))}
+                                        className="flex h-8 items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-100">
+                                        <Recycle size={13} />
+                                        Lihat Nota
                                     </button>
                                 )}
                                 {p.status !== 'selesai' && <span className="text-xs text-muted-foreground">-</span>}
@@ -560,6 +612,117 @@ function PickupHistoryPage({ openForm }) {
                         ])}
                 footer={`Menampilkan ${rows.length} pengambilan`}
             />
+
+            {/* ── Nota Digital Popup Modal ── */}
+            {notaPopup && (
+                <Modal open onClose={() => setNotaPopup(null)}>
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-border/60 bg-accent/60 px-6 py-4">
+                        <div className="flex items-center gap-3">
+                            <span className="flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+                                <Recycle size={20} />
+                            </span>
+                            <div>
+                                <h2 className="text-base font-bold text-primary">Nota Digital</h2>
+                                <p className="font-mono text-xs font-semibold text-foreground/70">{notaPopup._code}</p>
+                            </div>
+                        </div>
+                        <button type="button" onClick={() => setNotaPopup(null)} aria-label="Tutup"
+                            className="rounded-lg p-1.5 text-muted-foreground hover:bg-black/5 hover:text-foreground transition-colors">
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    {/* Body */}
+                    <div className="flex flex-col gap-5 p-6 bg-card max-h-[70vh] overflow-y-auto">
+                        {/* Info row */}
+                        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
+                            <span><strong className="text-foreground">Tanggal:</strong> {dfmt(notaPopup._issuedAt ?? notaPopup.completed_at ?? notaPopup.scheduled_at)}</span>
+                            <span><strong className="text-foreground">Lokasi:</strong> {notaPopup._locationLabel || (notaPopup.location_type === 'jemput_rumah' ? 'Dijemput di Rumah' : notaPopup.location_type === 'jemput_pasar' ? 'Dijemput di Pasar' : 'Diantar ke Gudang')}</span>
+                            {(notaPopup._officerName || notaPopup.officer?.name) && (
+                                <span><strong className="text-foreground">Petugas:</strong> {notaPopup._officerName || notaPopup.officer?.name}</span>
+                            )}
+                        </div>
+
+                        {/* Items table */}
+                        {notaPopup._items.length > 0 ? (
+                            <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
+                                <table className="w-full text-left text-xs">
+                                    <thead className="bg-[#eef3fc] text-[10px] font-bold uppercase tracking-wider text-slate-700">
+                                        <tr>
+                                            <th className="px-4 py-2.5">Jenis Sampah</th>
+                                            <th className="px-4 py-2.5 text-right">Berat / Jumlah</th>
+                                            <th className="px-4 py-2.5 text-right">Harga/Unit</th>
+                                            <th className="px-4 py-2.5 text-right">Nilai</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/60">
+                                        {notaPopup._items.map((item, i) => (
+                                            <tr key={i} className="hover:bg-secondary/30 transition-colors">
+                                                <td className="px-4 py-2.5 font-semibold text-foreground">{item.name}</td>
+                                                <td className="px-4 py-2.5 text-right text-muted-foreground">{item.weight} {item.unit}</td>
+                                                <td className="px-4 py-2.5 text-right text-muted-foreground">{rp(item.price)}/{item.unit}</td>
+                                                <td className="px-4 py-2.5 text-right font-bold text-foreground">{rp(item.total)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-muted-foreground italic">Tanpa rincian item</p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground -mt-2">
+                            * Data nota ini tersimpan permanen (frozen) di database saat transaksi selesai dan terisolasi dari perubahan harga sampah.
+                        </p>
+
+                        {/* Summary: gross → fee → net */}
+                        <div className="rounded-xl border border-border/60 bg-slate-50/80 p-4">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>Nilai Setoran</span>
+                                <span className="font-semibold text-foreground">{rp(notaPopup._gross)}</span>
+                            </div>
+                            {notaPopup._fee > 0 && (
+                                <div className="mt-1.5 flex items-center justify-between text-xs">
+                                    <span className="text-rose-600">Potongan 20%</span>
+                                    <span className="font-semibold text-rose-600">−{rp(notaPopup._fee)}</span>
+                                </div>
+                            )}
+                            <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
+                                <strong className="text-sm text-foreground">Saldo Masuk ke Wallet</strong>
+                                <strong className="text-lg font-extrabold text-emerald-700">{rp(notaPopup._net)}</strong>
+                            </div>
+                        </div>
+
+                        {/* Complaint status / button */}
+                        <div className="flex items-center justify-between">
+                            {notaPopup._complaint ? (
+                                <span className={cn(
+                                    'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold',
+                                    complaintStatus(notaPopup._complaint.status).cls
+                                )}>
+                                    <MessageSquareWarning size={13} />
+                                    Komplain #{notaPopup._complaint.id} · {complaintStatus(notaPopup._complaint.status).label}
+                                </span>
+                            ) : (
+                                <button
+                                    onClick={() => { setReporting(notaPopup); setNotaPopup(null); }}
+                                    className="flex h-10 items-center gap-2 rounded-xl border border-primary/40 bg-card px-4 text-xs font-semibold text-primary transition-all hover:bg-primary hover:text-white"
+                                >
+                                    <MessageSquareWarning size={15} />
+                                    <span>Ajukan Komplain</span>
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setNotaPopup(null)}
+                                className="h-10 rounded-xl border border-border bg-card px-5 text-xs font-semibold text-foreground/80 hover:bg-secondary transition-all"
+                            >
+                                Tutup
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
             {again && (
                 <RequestAgainModal
                     user={user}
@@ -575,7 +738,7 @@ function PickupHistoryPage({ openForm }) {
                         itemsSummary: `${locLabel(reporting.location_type)} · petugas: ${reporting.officer?.name ?? '-'}`,
                     }}
                     onClose={() => setReporting(null)}
-                    onSuccess={msg => { setReporting(null); setDone(msg || 'Laporan berhasil dikirim ke pengurus.'); }}
+                    onSuccess={() => { setReporting(null); setDone('Komplain Berhasil Dikirim'); reloadAll(); }}
                 />
             )}
             <StatusPopup open={Boolean(done)} title={done} onClose={() => setDone('')} />
@@ -712,6 +875,7 @@ function MemberPages({ page, setPage, openForm }) {
             return <SukarelaPage />;
         case 'pengambilan-sampah':
             return <PickupHistoryPage openForm={openForm} />;
+
         case 'dompet-shu':
             return <WalletAndShuPage />;
         case 'harga-sampah':
@@ -732,6 +896,7 @@ const memberPageTitles = {
     'simpanan-wajib': 'Simpanan Wajib Anggota',
     'simpanan-sukarela': 'Simpanan Sukarela Anggota',
     'pengambilan-sampah': 'Riwayat Pengambilan Sampah',
+
     'harga-sampah': 'Papan Harga Sampah',
     'laporan': 'Pusat Laporan Anggota',
     'laporan-shu': 'Laporan SHU Anggota',

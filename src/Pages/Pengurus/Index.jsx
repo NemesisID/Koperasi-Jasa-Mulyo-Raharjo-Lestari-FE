@@ -1,4 +1,4 @@
-import { useState, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Head } from '@/lib/shims';
 import { useAuth } from '@/lib/auth';
@@ -12,11 +12,9 @@ import { api, useApi, download, rp, dfmt } from '@/lib/api';
 import ComplaintsDeskPage from './ComplaintsDesk';
 import TrashPricesPage from './TrashPrices';
 import UsersPage from './Users';
-import MembersPage from './Members';
 import WajibOverviewPage from './WajibOverview';
 import PickupMonitorPage from './PickupMonitor';
 import WithdrawalsPage from './Withdrawals';
-import PriceLogPage from './PriceLogPage';
 
 // ─── Popup context ────────────────────────────────────────────
 const PopupCtx = createContext({ openForm: () => {}, showStatus: () => {} });
@@ -577,7 +575,12 @@ function ExpenseSummaryRow() {
 
 function TransactionPage({ type, title, desc }) {
     const { openForm } = usePopup();
-    const { data, meta, loading } = useApi(`/transactions?type=${type}&per_page=15`);
+    const { data, meta, loading, reload } = useApi(`/transactions?type=${type}&per_page=15`);
+    // Refresh otomatis saat ada popup sukses dari FormPopup mana pun.
+    useEffect(() => {
+        window.addEventListener('kjmrl:refresh', reload);
+        return () => window.removeEventListener('kjmrl:refresh', reload);
+    }, [reload]);
     const rows = data ?? [];
     const now = new Date();
     const start = `${now.getFullYear()}-01-01`;
@@ -990,8 +993,6 @@ function ManagerPages({ page, setPage }) {
             return <DashboardPage setPage={setPage} />;
         case 'harga-sampah':
             return <TrashPricesPage />;
-        case 'log-harga':
-            return <PriceLogPage />;
         case 'simpanan-pokok':
             return <SavingsByLabelPage label="POKOK" />;
         case 'simpanan-wajib':
@@ -1000,8 +1001,6 @@ function ManagerPages({ page, setPage }) {
             return <PickupMonitorPage />;
         case 'manajemen-user':
             return <UsersPage showStatus={showStatus} />;
-        case 'manajemen-anggota':
-            return <MembersPage />;
         case 'shu':
             return <ShuPage />;
         case 'penarikan':
@@ -1028,7 +1027,6 @@ function ManagerPages({ page, setPage }) {
 const pageTitles = {
     'dashboard': 'Dashboard Pengurus',
     'harga-sampah': 'Manajemen Harga Sampah',
-    'log-harga': 'Log Perubahan Harga',
     'simpanan-pokok': 'Simpanan Pokok',
     'simpanan-wajib': 'Simpanan Wajib',
     'shu': 'Sisa Hasil Usaha (SHU)',
@@ -1037,7 +1035,6 @@ const pageTitles = {
     'pengeluaran': 'Manajemen Pengeluaran',
     'penjemputan': 'Monitoring Pengambilan Sampah',
     'manajemen-user': 'Manajemen Pengguna',
-    'manajemen-anggota': 'Manajemen Anggota',
     'pengaduan': 'Helpdesk Pengaduan',
     'laporan': 'Pusat Laporan',
     'laporan-laba-rugi': 'Laporan Laba Rugi (P&L)',
@@ -1052,11 +1049,18 @@ export default function PengurusIndex() {
     const [form, setForm] = useState(null);
     const [status, setStatus] = useState('');
 
+    // Popup sukses = ada data berubah → umumkan ke halaman aktif agar
+    // daftar me-refresh sendiri (dulu harus reload manual).
+    const showStatus = (t) => {
+        setStatus(t);
+        if (t) window.dispatchEvent(new Event('kjmrl:refresh'));
+    };
+
     if (ready && !user) return <Navigate to="/" replace />;
     if (!ready) return null;
 
     return (
-        <PopupCtx.Provider value={{ openForm: setForm, showStatus: setStatus }}>
+        <PopupCtx.Provider value={{ openForm: setForm, showStatus }}>
             <Head title={pageTitles[page] || 'Dashboard Pengurus'} />
             <ManagerShell currentPage={page} setPage={setPage}>
                 <ManagerPages page={page} setPage={setPage} />

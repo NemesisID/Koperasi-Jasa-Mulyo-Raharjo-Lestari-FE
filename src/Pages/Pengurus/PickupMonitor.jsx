@@ -271,8 +271,8 @@ export default function PickupMonitorPage() {
                                         <span className="block font-semibold text-foreground">{p.member?.name ?? `Tiket #${p.id}`}</span>
                                         <span className="block font-mono text-[11px] font-bold text-muted-foreground">{p.member?.member_code}</span>
                                     </td>
-                                    <td className="px-6 py-4 max-w-[220px] truncate text-muted-foreground" title={p.member?.address}>
-                                        <span className="inline-flex items-center gap-1"><MapPin size={13} className="shrink-0 text-primary" />{p.member?.address ?? '-'}</span>
+                                    <td className="px-6 py-4 max-w-[220px] truncate text-muted-foreground" title={p.location_type === 'jemput_pasar' ? p.member?.address_pasar : p.member?.address_rumah}>
+                                        <span className="inline-flex items-center gap-1"><MapPin size={13} className="shrink-0 text-primary" />{(p.location_type === 'jemput_pasar' ? p.member?.address_pasar : p.member?.address_rumah) ?? p.member?.address ?? '-'}</span>
                                     </td>
                                     <td className="px-6 py-4 text-muted-foreground">{dfmt(p.scheduled_at)}</td>
                                     <td className="px-6 py-4">{p.location_type === 'jemput_rumah' ? 'Jemput Rumah' : p.location_type === 'jemput_pasar' ? 'Jemput Pasar' : 'Gudang'}</td>
